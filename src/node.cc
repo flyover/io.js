@@ -65,8 +65,18 @@ typedef int mode_t;
 #endif
 
 #ifdef __APPLE__
-#include <crt_externs.h>
-#define environ (*_NSGetEnviron())
+# include "TargetConditionals.h"
+# if (TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR)
+#  include <sys/types.h>
+#  include <grp.h>
+#  include <unistd.h>
+   extern char **environ;
+# elif TARGET_OS_MAC
+#  include <crt_externs.h>
+#  define environ (*_NSGetEnviron())
+# else
+#  error "unsupported Apple platform"
+# endif
 #elif !defined(_MSC_VER)
 extern char **environ;
 #endif

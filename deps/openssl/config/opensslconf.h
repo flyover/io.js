@@ -220,7 +220,7 @@
 # undef THIRTY_TWO_BIT
 # undef SIXTEEN_BIT
 # undef EIGHT_BIT
-# if defined(_M_X64) || defined(__x86_64__)
+# if defined(_M_X64) || defined(__x86_64__) || defined(__aarch64__) || defined(__mips64)
 #  if defined(_LP64)
 #   define SIXTY_FOUR_BIT_LONG
 #  else

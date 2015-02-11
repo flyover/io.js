@@ -167,6 +167,10 @@ int __detect_mips_arch_revision(void) {
 }
 #endif
 
+#endif  // V8_OS_LINUX
+
+#if V8_OS_LINUX || V8_OS_POSIX
+
 // Extract the information exposed by the kernel via /proc/cpuinfo.
 class CPUInfo FINAL {
  public:
@@ -258,6 +262,10 @@ class CPUInfo FINAL {
   char* data_;
   size_t datalen_;
 };
+
+#endif	// V8_OS_LINUX || V8_OS_POSIX
+
+#if V8_OS_LINUX
 
 #if V8_HOST_ARCH_ARM || V8_HOST_ARCH_MIPS || V8_HOST_ARCH_MIPS64
 
