@@ -82,6 +82,8 @@ Pass `true` as the third argument to treat `//foo/bar` as
 
 Take a parsed URL object, and return a formatted URL string.
 
+Here's how the formatting process works:
+
 * `href` will be ignored.
 * `protocol` is treated the same with or without the trailing `:` (colon).
   * The protocols `http`, `https`, `ftp`, `gopher`, `file` will be
@@ -95,11 +97,11 @@ Take a parsed URL object, and return a formatted URL string.
 * `hostname` will only be used if `host` is absent.
 * `port` will only be used if `host` is absent.
 * `host` will be used in place of `hostname` and `port`
-* `pathname` is treated the same with or without the leading `/` (slash)
-* `search` will be used in place of `query`
+* `pathname` is treated the same with or without the leading `/` (slash).
 * `query` (object; see `querystring`) will only be used if `search` is absent.
-* `search` is treated the same with or without the leading `?` (question mark)
-* `hash` is treated the same with or without the leading `#` (pound sign, anchor)
+* `search` will be used in place of `query`.
+  * It is treated the same with or without the leading `?` (question mark).
+* `hash` is treated the same with or without the leading `#` (pound sign, anchor).
 
 ## url.resolve(from, to)
 

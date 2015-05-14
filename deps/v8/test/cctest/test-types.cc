@@ -8,6 +8,7 @@
 #include "src/isolate-inl.h"
 #include "src/types.h"
 #include "test/cctest/cctest.h"
+#include "test/cctest/types-fuzz.h"
 
 using namespace v8::internal;
 
@@ -87,273 +88,6 @@ struct HeapRep {
     static bitset Glb(Handle<HeapType> type) { return Glb(*type); }
     static bitset Lub(Handle<HeapType> type) { return Lub(*type); }
   };
-};
-
-
-template<class Type, class TypeHandle, class Region>
-class Types {
- public:
-  Types(Region* region, Isolate* isolate)
-      : region_(region), rng_(isolate->random_number_generator()) {
-    #define DECLARE_TYPE(name, value) \
-      name = Type::name(region); \
-      types.push_back(name);
-    PROPER_BITSET_TYPE_LIST(DECLARE_TYPE)
-    #undef DECLARE_TYPE
-
-    object_map = isolate->factory()->NewMap(
-        JS_OBJECT_TYPE, JSObject::kHeaderSize);
-    array_map = isolate->factory()->NewMap(
-        JS_ARRAY_TYPE, JSArray::kSize);
-    number_map = isolate->factory()->NewMap(
-        HEAP_NUMBER_TYPE, HeapNumber::kSize);
-    uninitialized_map = isolate->factory()->uninitialized_map();
-    ObjectClass = Type::Class(object_map, region);
-    ArrayClass = Type::Class(array_map, region);
-    NumberClass = Type::Class(number_map, region);
-    UninitializedClass = Type::Class(uninitialized_map, region);
-
-    maps.push_back(object_map);
-    maps.push_back(array_map);
-    maps.push_back(uninitialized_map);
-    for (MapVector::iterator it = maps.begin(); it != maps.end(); ++it) {
-      types.push_back(Type::Class(*it, region));
-    }
-
-    smi = handle(Smi::FromInt(666), isolate);
-    signed32 = isolate->factory()->NewHeapNumber(0x40000000);
-    object1 = isolate->factory()->NewJSObjectFromMap(object_map);
-    object2 = isolate->factory()->NewJSObjectFromMap(object_map);
-    array = isolate->factory()->NewJSArray(20);
-    uninitialized = isolate->factory()->uninitialized_value();
-    SmiConstant = Type::Constant(smi, region);
-    Signed32Constant = Type::Constant(signed32, region);
-    ObjectConstant1 = Type::Constant(object1, region);
-    ObjectConstant2 = Type::Constant(object2, region);
-    ArrayConstant = Type::Constant(array, region);
-    UninitializedConstant = Type::Constant(uninitialized, region);
-
-    values.push_back(smi);
-    values.push_back(signed32);
-    values.push_back(object1);
-    values.push_back(object2);
-    values.push_back(array);
-    values.push_back(uninitialized);
-    for (ValueVector::iterator it = values.begin(); it != values.end(); ++it) {
-      types.push_back(Type::Constant(*it, region));
-    }
-
-    integers.push_back(isolate->factory()->NewNumber(-V8_INFINITY));
-    integers.push_back(isolate->factory()->NewNumber(+V8_INFINITY));
-    integers.push_back(isolate->factory()->NewNumber(-rng_->NextInt(10)));
-    integers.push_back(isolate->factory()->NewNumber(+rng_->NextInt(10)));
-    for (int i = 0; i < 10; ++i) {
-      double x = rng_->NextInt();
-      integers.push_back(isolate->factory()->NewNumber(x));
-      x *= rng_->NextInt();
-      if (!IsMinusZero(x)) integers.push_back(isolate->factory()->NewNumber(x));
-    }
-
-    NumberArray = Type::Array(Number, region);
-    StringArray = Type::Array(String, region);
-    AnyArray = Type::Array(Any, region);
-
-    SignedFunction1 = Type::Function(SignedSmall, SignedSmall, region);
-    NumberFunction1 = Type::Function(Number, Number, region);
-    NumberFunction2 = Type::Function(Number, Number, Number, region);
-    MethodFunction = Type::Function(String, Object, 0, region);
-
-    for (int i = 0; i < 30; ++i) {
-      types.push_back(Fuzz());
-    }
-  }
-
-  Handle<i::Map> object_map;
-  Handle<i::Map> array_map;
-  Handle<i::Map> number_map;
-  Handle<i::Map> uninitialized_map;
-
-  Handle<i::Smi> smi;
-  Handle<i::HeapNumber> signed32;
-  Handle<i::JSObject> object1;
-  Handle<i::JSObject> object2;
-  Handle<i::JSArray> array;
-  Handle<i::Oddball> uninitialized;
-
-  #define DECLARE_TYPE(name, value) TypeHandle name;
-  BITSET_TYPE_LIST(DECLARE_TYPE)
-  #undef DECLARE_TYPE
-
-  TypeHandle ObjectClass;
-  TypeHandle ArrayClass;
-  TypeHandle NumberClass;
-  TypeHandle UninitializedClass;
-
-  TypeHandle SmiConstant;
-  TypeHandle Signed32Constant;
-  TypeHandle ObjectConstant1;
-  TypeHandle ObjectConstant2;
-  TypeHandle ArrayConstant;
-  TypeHandle UninitializedConstant;
-
-  TypeHandle NumberArray;
-  TypeHandle StringArray;
-  TypeHandle AnyArray;
-
-  TypeHandle SignedFunction1;
-  TypeHandle NumberFunction1;
-  TypeHandle NumberFunction2;
-  TypeHandle MethodFunction;
-
-  typedef std::vector<TypeHandle> TypeVector;
-  typedef std::vector<Handle<i::Map> > MapVector;
-  typedef std::vector<Handle<i::Object> > ValueVector;
-
-  TypeVector types;
-  MapVector maps;
-  ValueVector values;
-  ValueVector integers;  // "Integer" values used for range limits.
-
-  TypeHandle Of(Handle<i::Object> value) {
-    return Type::Of(value, region_);
-  }
-
-  TypeHandle NowOf(Handle<i::Object> value) {
-    return Type::NowOf(value, region_);
-  }
-
-  TypeHandle Class(Handle<i::Map> map) {
-    return Type::Class(map, region_);
-  }
-
-  TypeHandle Constant(Handle<i::Object> value) {
-    return Type::Constant(value, region_);
-  }
-
-  TypeHandle Range(Handle<i::Object> min, Handle<i::Object> max) {
-    return Type::Range(min, max, region_);
-  }
-
-  TypeHandle Context(TypeHandle outer) {
-    return Type::Context(outer, region_);
-  }
-
-  TypeHandle Array1(TypeHandle element) {
-    return Type::Array(element, region_);
-  }
-
-  TypeHandle Function0(TypeHandle result, TypeHandle receiver) {
-    return Type::Function(result, receiver, 0, region_);
-  }
-
-  TypeHandle Function1(TypeHandle result, TypeHandle receiver, TypeHandle arg) {
-    TypeHandle type = Type::Function(result, receiver, 1, region_);
-    type->AsFunction()->InitParameter(0, arg);
-    return type;
-  }
-
-  TypeHandle Function2(TypeHandle result, TypeHandle arg1, TypeHandle arg2) {
-    return Type::Function(result, arg1, arg2, region_);
-  }
-
-  TypeHandle Union(TypeHandle t1, TypeHandle t2) {
-    return Type::Union(t1, t2, region_);
-  }
-  TypeHandle Intersect(TypeHandle t1, TypeHandle t2) {
-    return Type::Intersect(t1, t2, region_);
-  }
-
-  template<class Type2, class TypeHandle2>
-  TypeHandle Convert(TypeHandle2 t) {
-    return Type::template Convert<Type2>(t, region_);
-  }
-
-  TypeHandle Random() {
-    return types[rng_->NextInt(static_cast<int>(types.size()))];
-  }
-
-  TypeHandle Fuzz(int depth = 4) {
-    switch (rng_->NextInt(depth == 0 ? 3 : 20)) {
-      case 0: {  // bitset
-        #define COUNT_BITSET_TYPES(type, value) + 1
-        int n = 0 PROPER_BITSET_TYPE_LIST(COUNT_BITSET_TYPES);
-        #undef COUNT_BITSET_TYPES
-        // Pick a bunch of named bitsets and return their intersection.
-        TypeHandle result = Type::Any(region_);
-        for (int i = 0, m = 1 + rng_->NextInt(3); i < m; ++i) {
-          int j = rng_->NextInt(n);
-          #define PICK_BITSET_TYPE(type, value) \
-            if (j-- == 0) { \
-              TypeHandle tmp = Type::Intersect( \
-                  result, Type::type(region_), region_); \
-              if (tmp->Is(Type::None()) && i != 0) { \
-                break; \
-              } { \
-                result = tmp; \
-                continue; \
-              } \
-            }
-          PROPER_BITSET_TYPE_LIST(PICK_BITSET_TYPE)
-          #undef PICK_BITSET_TYPE
-        }
-        return result;
-      }
-      case 1: {  // class
-        int i = rng_->NextInt(static_cast<int>(maps.size()));
-        return Type::Class(maps[i], region_);
-      }
-      case 2: {  // constant
-        int i = rng_->NextInt(static_cast<int>(values.size()));
-        return Type::Constant(values[i], region_);
-      }
-      case 3: {  // range
-        int i = rng_->NextInt(static_cast<int>(integers.size()));
-        int j = rng_->NextInt(static_cast<int>(integers.size()));
-        i::Handle<i::Object> min = integers[i];
-        i::Handle<i::Object> max = integers[j];
-        if (min->Number() > max->Number()) std::swap(min, max);
-        return Type::Range(min, max, region_);
-      }
-      case 4: {  // context
-        int depth = rng_->NextInt(3);
-        TypeHandle type = Type::Internal(region_);
-        for (int i = 0; i < depth; ++i) type = Type::Context(type, region_);
-        return type;
-      }
-      case 5: {  // array
-        TypeHandle element = Fuzz(depth / 2);
-        return Type::Array(element, region_);
-      }
-      case 6:
-      case 7: {  // function
-        TypeHandle result = Fuzz(depth / 2);
-        TypeHandle receiver = Fuzz(depth / 2);
-        int arity = rng_->NextInt(3);
-        TypeHandle type = Type::Function(result, receiver, arity, region_);
-        for (int i = 0; i < type->AsFunction()->Arity(); ++i) {
-          TypeHandle parameter = Fuzz(depth / 2);
-          type->AsFunction()->InitParameter(i, parameter);
-        }
-        return type;
-      }
-      default: {  // union
-        int n = rng_->NextInt(10);
-        TypeHandle type = None;
-        for (int i = 0; i < n; ++i) {
-          TypeHandle operand = Fuzz(depth - 1);
-          type = Type::Union(type, operand, region_);
-        }
-        return type;
-      }
-    }
-    UNREACHABLE();
-  }
-
-  Region* region() { return region_; }
-
- private:
-  Region* region_;
-  v8::base::RandomNumberGenerator* rng_;
 };
 
 
@@ -560,39 +294,55 @@ struct Tests : Rep {
     CHECK(T.Constant(fac->NewNumber(0))->Is(T.UnsignedSmall));
     CHECK(T.Constant(fac->NewNumber(1))->Is(T.UnsignedSmall));
     CHECK(T.Constant(fac->NewNumber(0x3fffffff))->Is(T.UnsignedSmall));
-    CHECK(T.Constant(fac->NewNumber(-1))->Is(T.OtherSignedSmall));
-    CHECK(T.Constant(fac->NewNumber(-0x3fffffff))->Is(T.OtherSignedSmall));
-    CHECK(T.Constant(fac->NewNumber(-0x40000000))->Is(T.OtherSignedSmall));
+    CHECK(T.Constant(fac->NewNumber(-1))->Is(T.NegativeSignedSmall));
+    CHECK(T.Constant(fac->NewNumber(-0x3fffffff))->Is(T.NegativeSignedSmall));
+    CHECK(T.Constant(fac->NewNumber(-0x40000000))->Is(T.NegativeSignedSmall));
     if (SmiValuesAre31Bits()) {
-      CHECK(T.Constant(fac->NewNumber(0x40000000))->Is(T.OtherUnsigned31));
-      CHECK(T.Constant(fac->NewNumber(0x7fffffff))->Is(T.OtherUnsigned31));
-      CHECK(T.Constant(fac->NewNumber(-0x40000001))->Is(T.OtherSigned32));
-      CHECK(T.Constant(fac->NewNumber(-0x7fffffff))->Is(T.OtherSigned32));
-      CHECK(T.Constant(fac->NewNumber(-0x7fffffff-1))->Is(T.OtherSigned32));
+      CHECK(T.Constant(fac->NewNumber(0x40000000))->Is(T.NonNegativeSigned32));
+      CHECK(!T.Constant(fac->NewNumber(0x40000000))->Is(T.UnsignedSmall));
+      CHECK(T.Constant(fac->NewNumber(0x7fffffff))->Is(T.NonNegativeSigned32));
+      CHECK(!T.Constant(fac->NewNumber(0x7fffffff))->Is(T.UnsignedSmall));
+      CHECK(T.Constant(fac->NewNumber(-0x40000001))->Is(T.NegativeSigned32));
+      CHECK(
+          !T.Constant(fac->NewNumber(-0x40000001))->Is(T.NegativeSignedSmall));
+      CHECK(T.Constant(fac->NewNumber(-0x7fffffff))->Is(T.NegativeSigned32));
+      CHECK(!T.Constant(fac->NewNumber(-0x7fffffff - 1))
+                 ->Is(T.NegativeSignedSmall));
     } else {
       CHECK(SmiValuesAre32Bits());
       CHECK(T.Constant(fac->NewNumber(0x40000000))->Is(T.UnsignedSmall));
       CHECK(T.Constant(fac->NewNumber(0x7fffffff))->Is(T.UnsignedSmall));
-      CHECK(!T.Constant(fac->NewNumber(0x40000000))->Is(T.OtherUnsigned31));
-      CHECK(!T.Constant(fac->NewNumber(0x7fffffff))->Is(T.OtherUnsigned31));
-      CHECK(T.Constant(fac->NewNumber(-0x40000001))->Is(T.OtherSignedSmall));
-      CHECK(T.Constant(fac->NewNumber(-0x7fffffff))->Is(T.OtherSignedSmall));
-      CHECK(T.Constant(fac->NewNumber(-0x7fffffff-1))->Is(T.OtherSignedSmall));
-      CHECK(!T.Constant(fac->NewNumber(-0x40000001))->Is(T.OtherSigned32));
-      CHECK(!T.Constant(fac->NewNumber(-0x7fffffff))->Is(T.OtherSigned32));
-      CHECK(!T.Constant(fac->NewNumber(-0x7fffffff-1))->Is(T.OtherSigned32));
+      CHECK(T.Constant(fac->NewNumber(0x40000000))->Is(T.NonNegativeSigned32));
+      CHECK(T.Constant(fac->NewNumber(0x7fffffff))->Is(T.NonNegativeSigned32));
+      CHECK(T.Constant(fac->NewNumber(-0x40000001))->Is(T.NegativeSignedSmall));
+      CHECK(T.Constant(fac->NewNumber(-0x7fffffff))->Is(T.NegativeSignedSmall));
+      CHECK(T.Constant(fac->NewNumber(-0x7fffffff - 1))
+                ->Is(T.NegativeSignedSmall));
+      CHECK(T.Constant(fac->NewNumber(-0x40000001))->Is(T.NegativeSigned32));
+      CHECK(T.Constant(fac->NewNumber(-0x7fffffff))->Is(T.NegativeSigned32));
+      CHECK(
+          T.Constant(fac->NewNumber(-0x7fffffff - 1))->Is(T.NegativeSigned32));
     }
-    CHECK(T.Constant(fac->NewNumber(0x80000000u))->Is(T.OtherUnsigned32));
-    CHECK(T.Constant(fac->NewNumber(0xffffffffu))->Is(T.OtherUnsigned32));
-    CHECK(T.Constant(fac->NewNumber(0xffffffffu+1.0))->Is(T.OtherNumber));
-    CHECK(T.Constant(fac->NewNumber(-0x7fffffff-2.0))->Is(T.OtherNumber));
-    CHECK(T.Constant(fac->NewNumber(0.1))->Is(T.OtherNumber));
-    CHECK(T.Constant(fac->NewNumber(-10.1))->Is(T.OtherNumber));
-    CHECK(T.Constant(fac->NewNumber(10e60))->Is(T.OtherNumber));
+    CHECK(T.Constant(fac->NewNumber(0x80000000u))->Is(T.Unsigned32));
+    CHECK(!T.Constant(fac->NewNumber(0x80000000u))->Is(T.NonNegativeSigned32));
+    CHECK(T.Constant(fac->NewNumber(0xffffffffu))->Is(T.Unsigned32));
+    CHECK(!T.Constant(fac->NewNumber(0xffffffffu))->Is(T.NonNegativeSigned32));
+    CHECK(T.Constant(fac->NewNumber(0xffffffffu + 1.0))->Is(T.PlainNumber));
+    CHECK(!T.Constant(fac->NewNumber(0xffffffffu + 1.0))->Is(T.Integral32));
+    CHECK(T.Constant(fac->NewNumber(-0x7fffffff - 2.0))->Is(T.PlainNumber));
+    CHECK(!T.Constant(fac->NewNumber(-0x7fffffff - 2.0))->Is(T.Integral32));
+    CHECK(T.Constant(fac->NewNumber(0.1))->Is(T.PlainNumber));
+    CHECK(!T.Constant(fac->NewNumber(0.1))->Is(T.Integral32));
+    CHECK(T.Constant(fac->NewNumber(-10.1))->Is(T.PlainNumber));
+    CHECK(!T.Constant(fac->NewNumber(-10.1))->Is(T.Integral32));
+    CHECK(T.Constant(fac->NewNumber(10e60))->Is(T.PlainNumber));
+    CHECK(!T.Constant(fac->NewNumber(10e60))->Is(T.Integral32));
     CHECK(T.Constant(fac->NewNumber(-1.0*0.0))->Is(T.MinusZero));
     CHECK(T.Constant(fac->NewNumber(v8::base::OS::nan_value()))->Is(T.NaN));
-    CHECK(T.Constant(fac->NewNumber(V8_INFINITY))->Is(T.OtherNumber));
-    CHECK(T.Constant(fac->NewNumber(-V8_INFINITY))->Is(T.OtherNumber));
+    CHECK(T.Constant(fac->NewNumber(V8_INFINITY))->Is(T.PlainNumber));
+    CHECK(!T.Constant(fac->NewNumber(V8_INFINITY))->Is(T.Integral32));
+    CHECK(T.Constant(fac->NewNumber(-V8_INFINITY))->Is(T.PlainNumber));
+    CHECK(!T.Constant(fac->NewNumber(-V8_INFINITY))->Is(T.Integral32));
   }
 
   void Range() {
@@ -856,6 +606,8 @@ struct Tests : Rep {
   }
 
   void MinMax() {
+    Factory* fac = isolate->factory();
+
     // If b is regular numeric bitset, then Range(b->Min(), b->Max())->Is(b).
     // TODO(neis): Need to ignore representation for this to be true.
     /*
@@ -874,8 +626,7 @@ struct Tests : Rep {
     // If b is regular numeric bitset, then b->Min() and b->Max() are integers.
     for (TypeIterator it = T.types.begin(); it != T.types.end(); ++it) {
       TypeHandle type = *it;
-      if (this->IsBitset(type) && type->Is(T.Number) &&
-          !type->Is(T.None) && !type->Is(T.NaN)) {
+      if (this->IsBitset(type) && type->Is(T.Number) && !type->Is(T.NaN)) {
         CHECK(IsInteger(type->Min()) && IsInteger(type->Max()));
       }
     }
@@ -902,6 +653,15 @@ struct Tests : Rep {
             Rep::BitsetType::Lub(type), T.region());
         CHECK(lub->Min() <= type->Min() && type->Max() <= lub->Max());
       }
+    }
+
+    // Rangification: If T->Is(Range(-inf,+inf)) and !T->Is(None), then
+    // T->Is(Range(T->Min(), T->Max())).
+    for (TypeIterator it = T.types.begin(); it != T.types.end(); ++it) {
+      TypeHandle type = *it;
+      CHECK(!(type->Is(T.Integer) && !type->Is(T.None)) ||
+            type->Is(T.Range(fac->NewNumber(type->Min()),
+                             fac->NewNumber(type->Max()))));
     }
   }
 
@@ -1160,7 +920,7 @@ struct Tests : Rep {
       if (type->IsRange()) {
         TypeHandle lub = Rep::BitsetType::New(
             Rep::BitsetType::Lub(type), T.region());
-        CHECK(lub->Is(T.Union(T.Integral32, T.OtherNumber)));
+        CHECK(lub->Is(T.PlainNumber));
       }
     }
 
@@ -1190,10 +950,8 @@ struct Tests : Rep {
 
     CheckSub(T.Object, T.Receiver);
     CheckSub(T.Array, T.Object);
-    CheckSub(T.Function, T.Object);
     CheckSub(T.Proxy, T.Receiver);
     CheckUnordered(T.Object, T.Proxy);
-    CheckUnordered(T.Array, T.Function);
 
 
     // Subtyping between concrete structural types
@@ -1229,7 +987,7 @@ struct Tests : Rep {
     CheckSub(T.NumberArray, T.Object);
     CheckUnordered(T.StringArray, T.AnyArray);
 
-    CheckSub(T.MethodFunction, T.Function);
+    CheckSub(T.MethodFunction, T.Object);
     CheckSub(T.NumberFunction1, T.Object);
     CheckUnordered(T.SignedFunction1, T.NumberFunction1);
     CheckUnordered(T.NumberFunction1, T.NumberFunction2);
@@ -1515,10 +1273,8 @@ struct Tests : Rep {
     CheckDisjoint(T.InternalizedString, T.Symbol);
     CheckOverlap(T.Object, T.Receiver);
     CheckOverlap(T.Array, T.Object);
-    CheckOverlap(T.Function, T.Object);
     CheckOverlap(T.Proxy, T.Receiver);
     CheckDisjoint(T.Object, T.Proxy);
-    CheckDisjoint(T.Array, T.Function);
 
     // Structural types
     CheckOverlap(T.ObjectClass, T.Object);
@@ -1542,7 +1298,7 @@ struct Tests : Rep {
     CheckOverlap(T.NumberArray, T.Array);
     CheckDisjoint(T.NumberArray, T.AnyArray);
     CheckDisjoint(T.NumberArray, T.StringArray);
-    CheckOverlap(T.MethodFunction, T.Function);
+    CheckOverlap(T.MethodFunction, T.Object);
     CheckDisjoint(T.SignedFunction1, T.NumberFunction1);
     CheckDisjoint(T.SignedFunction1, T.NumberFunction2);
     CheckDisjoint(T.NumberFunction1, T.NumberFunction2);
@@ -1712,11 +1468,11 @@ struct Tests : Rep {
     CheckDisjoint(T.Union(T.NumberArray, T.String), T.Number);
 
     // Bitset-function
-    CHECK(this->IsBitset(T.Union(T.MethodFunction, T.Function)));
+    CHECK(this->IsBitset(T.Union(T.MethodFunction, T.Object)));
     CHECK(this->IsUnion(T.Union(T.NumberFunction1, T.Number)));
 
-    CheckEqual(T.Union(T.MethodFunction, T.Function), T.Function);
-    CheckUnordered(T.Union(T.NumberFunction1, T.String), T.Function);
+    CheckEqual(T.Union(T.MethodFunction, T.Object), T.Object);
+    CheckUnordered(T.Union(T.NumberFunction1, T.String), T.Object);
     CheckOverlap(T.Union(T.NumberFunction2, T.String), T.Object);
     CheckDisjoint(T.Union(T.NumberFunction1, T.String), T.Number);
 
@@ -1784,7 +1540,7 @@ struct Tests : Rep {
     CheckEqual(
         T.Union(T.NumberFunction1, T.NumberFunction2),
         T.Union(T.NumberFunction2, T.NumberFunction1));
-    CheckSub(T.Union(T.SignedFunction1, T.MethodFunction), T.Function);
+    CheckSub(T.Union(T.SignedFunction1, T.MethodFunction), T.Object);
 
     // Union-union
     CheckEqual(
@@ -1945,11 +1701,11 @@ struct Tests : Rep {
 
     // Bitset-array
     CheckEqual(T.Intersect(T.NumberArray, T.Object), T.NumberArray);
-    CheckEqual(T.Intersect(T.AnyArray, T.Function), T.None);
+    CheckEqual(T.Intersect(T.AnyArray, T.Proxy), T.None);
 
     // Bitset-function
     CheckEqual(T.Intersect(T.MethodFunction, T.Object), T.MethodFunction);
-    CheckEqual(T.Intersect(T.NumberFunction1, T.Array), T.None);
+    CheckEqual(T.Intersect(T.NumberFunction1, T.Proxy), T.None);
 
     // Bitset-union
     CheckEqual(
@@ -2087,6 +1843,32 @@ struct Tests : Rep {
     */
   }
 
+  void GetRange() {
+    // GetRange(Range(a, b)) = Range(a, b).
+    for (TypeIterator it1 = T.types.begin(); it1 != T.types.end(); ++it1) {
+      TypeHandle type1 = *it1;
+      if (type1->IsRange()) {
+        typename Type::RangeType* range = type1->GetRange();
+        CHECK(type1->Min() == range->Min()->Number());
+        CHECK(type1->Max() == range->Max()->Number());
+      }
+    }
+
+    // GetRange(Union(Constant(x), Range(min,max))) == Range(min, max).
+    for (TypeIterator it1 = T.types.begin(); it1 != T.types.end(); ++it1) {
+      for (TypeIterator it2 = T.types.begin(); it2 != T.types.end(); ++it2) {
+        TypeHandle type1 = *it1;
+        TypeHandle type2 = *it2;
+        if (type1->IsConstant() && type2->IsRange()) {
+          TypeHandle u = T.Union(type1, type2);
+
+          CHECK(type2->Min() == u->GetRange()->Min()->Number());
+          CHECK(type2->Max() == u->GetRange()->Max()->Number());
+        }
+      }
+    }
+  }
+
   template<class Type2, class TypeHandle2, class Region2, class Rep2>
   void Convert() {
     Types<Type2, TypeHandle2, Region2> T2(
@@ -2176,6 +1958,13 @@ TEST(NowOf) {
   CcTest::InitializeVM();
   ZoneTests().NowOf();
   HeapTests().NowOf();
+}
+
+
+TEST(MinMax) {
+  CcTest::InitializeVM();
+  ZoneTests().MinMax();
+  HeapTests().MinMax();
 }
 
 
@@ -2276,6 +2065,13 @@ TEST(Distributivity) {
   CcTest::InitializeVM();
   ZoneTests().Distributivity();
   HeapTests().Distributivity();
+}
+
+
+TEST(GetRange) {
+  CcTest::InitializeVM();
+  ZoneTests().GetRange();
+  HeapTests().GetRange();
 }
 
 

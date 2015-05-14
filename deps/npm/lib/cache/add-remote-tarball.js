@@ -4,19 +4,15 @@ var mkdir = require("mkdirp")
   , path = require("path")
   , sha = require("sha")
   , retry = require("retry")
-  , createWriteStream = require("graceful-fs").createWriteStream
+  , createWriteStream = require("fs-write-stream-atomic")
   , npm = require("../npm.js")
-  , registry = npm.registry
   , inflight = require("inflight")
-  , locker = require("../utils/locker.js")
-  , lock = locker.lock
-  , unlock = locker.unlock
   , addLocalTarball = require("./add-local-tarball.js")
   , cacheFile = require("npm-cache-filename")
 
 module.exports = addRemoteTarball
 
-function addRemoteTarball (u, pkgData, shasum, cb_) {
+function addRemoteTarball (u, pkgData, shasum, auth, cb_) {
   assert(typeof u === "string", "must have module URL")
   assert(typeof cb_ === "function", "must have callback")
 
@@ -26,14 +22,12 @@ function addRemoteTarball (u, pkgData, shasum, cb_) {
       data._shasum = data._shasum || shasum
       data._resolved = u
     }
-    unlock(u, function () {
-      cb_(er, data)
-    })
+    cb_(er, data)
   }
 
   cb_ = inflight(u, cb_)
-
-  if (!cb_) return
+  if (!cb_) return log.verbose("addRemoteTarball", u, "already in flight; waiting")
+  log.verbose("addRemoteTarball", u, "not in flight; adding")
 
   // XXX Fetch direct to cache location, store tarballs under
   // ${cache}/registry.npmjs.org/pkg/-/pkg-1.2.3.tgz
@@ -44,35 +38,32 @@ function addRemoteTarball (u, pkgData, shasum, cb_) {
     addLocalTarball(tmp, pkgData, shasum, cb)
   }
 
-  lock(u, function (er) {
+  log.verbose("addRemoteTarball", [u, shasum])
+  mkdir(path.dirname(tmp), function (er) {
     if (er) return cb(er)
-
-    log.verbose("addRemoteTarball", [u, shasum])
-    mkdir(path.dirname(tmp), function (er) {
-      if (er) return cb(er)
-      addRemoteTarball_(u, tmp, shasum, next)
-    })
+    addRemoteTarball_(u, tmp, shasum, auth, next)
   })
 }
 
-function addRemoteTarball_(u, tmp, shasum, cb) {
+function addRemoteTarball_ (u, tmp, shasum, auth, cb) {
   // Tuned to spread 3 attempts over about a minute.
   // See formula at <https://github.com/tim-kos/node-retry>.
-  var operation = retry.operation
-    ( { retries: npm.config.get("fetch-retries")
-      , factor: npm.config.get("fetch-retry-factor")
-      , minTimeout: npm.config.get("fetch-retry-mintimeout")
-      , maxTimeout: npm.config.get("fetch-retry-maxtimeout") })
+  var operation = retry.operation({
+    retries: npm.config.get("fetch-retries")
+  , factor: npm.config.get("fetch-retry-factor")
+  , minTimeout: npm.config.get("fetch-retry-mintimeout")
+  , maxTimeout: npm.config.get("fetch-retry-maxtimeout")
+  })
 
   operation.attempt(function (currentAttempt) {
     log.info("retry", "fetch attempt " + currentAttempt
       + " at " + (new Date()).toLocaleTimeString())
-    fetchAndShaCheck(u, tmp, shasum, function (er, response, shasum) {
+    fetchAndShaCheck(u, tmp, shasum, auth, function (er, response, shasum) {
       // Only retry on 408, 5xx or no `response`.
       var sc = response && response.statusCode
       var statusRetry = !sc || (sc === 408 || sc >= 500)
       if (er && statusRetry && operation.retry(er)) {
-        log.info("retry", "will retry, error on last attempt: " + er)
+        log.warn("retry", "will retry, error on last attempt: " + er)
         return
       }
       cb(er, response, shasum)
@@ -80,8 +71,8 @@ function addRemoteTarball_(u, tmp, shasum, cb) {
   })
 }
 
-function fetchAndShaCheck (u, tmp, shasum, cb) {
-  registry.fetch(u, null, function (er, response) {
+function fetchAndShaCheck (u, tmp, shasum, auth, cb) {
+  npm.registry.fetch(u, { auth : auth }, function (er, response) {
     if (er) {
       log.error("fetch failed", u)
       return cb(er, response)

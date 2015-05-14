@@ -35,8 +35,10 @@
 #include <string.h>
 
 #include <sys/types.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/time.h>
+#include <sys/uio.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -48,30 +50,16 @@
     defined(__OpenBSD__)    ||                                            \
     defined(__NetBSD__)
 # define HAVE_PREADV 1
-#elif defined(__linux__)
-# include <linux/version.h>
-# if defined(__GLIBC_PREREQ)
-#   if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,30) &&                    \
-       __GLIBC_PREREQ(2,10)
-#    define HAVE_PREADV 1
-#   else
-#    define HAVE_PREADV 0
-#   endif
-# else
-#  define HAVE_PREADV 0
-# endif
 #else
 # define HAVE_PREADV 0
 #endif
 
 #if defined(__linux__) || defined(__sun)
 # include <sys/sendfile.h>
-#elif defined(__APPLE__) || defined(__FreeBSD__)
-# include <sys/socket.h>
 #endif
 
-#if HAVE_PREADV || defined(__APPLE__)
-# include <sys/uio.h>
+#if defined(USE_UV_WRAP)
+#include "wrap.h"
 #endif
 
 #define INIT(type)                                                            \
@@ -219,6 +207,9 @@ static ssize_t uv__fs_mkdtemp(uv_fs_t* req) {
 
 
 static ssize_t uv__fs_read(uv_fs_t* req) {
+#if defined(__linux__)
+  static int no_preadv;
+#endif
   ssize_t result;
 
 #if defined(_AIX)
@@ -245,16 +236,12 @@ static ssize_t uv__fs_read(uv_fs_t* req) {
     result = preadv(req->file, (struct iovec*) req->bufs, req->nbufs, req->off);
 #else
 # if defined(__linux__)
-    static int no_preadv;
-    if (no_preadv)
+    if (no_preadv) retry:
 # endif
     {
       off_t nread;
       size_t index;
 
-# if defined(__linux__)
-    retry:
-# endif
       nread = 0;
       index = 0;
       result = 1;
@@ -295,22 +282,21 @@ done:
 
 
 #if defined(__OpenBSD__) || (defined(__APPLE__) && !defined(MAC_OS_X_VERSION_10_8))
-static int uv__fs_readdir_filter(uv__dirent_t* dent) {
+static int uv__fs_scandir_filter(uv__dirent_t* dent) {
 #else
-static int uv__fs_readdir_filter(const uv__dirent_t* dent) {
+static int uv__fs_scandir_filter(const uv__dirent_t* dent) {
 #endif
   return strcmp(dent->d_name, ".") != 0 && strcmp(dent->d_name, "..") != 0;
 }
 
 
-/* This should have been called uv__fs_scandir(). */
-static ssize_t uv__fs_readdir(uv_fs_t* req) {
+static ssize_t uv__fs_scandir(uv_fs_t* req) {
   uv__dirent_t **dents;
   int saved_errno;
   int n;
 
   dents = NULL;
-  n = scandir(req->path, &dents, uv__fs_readdir_filter, alphasort);
+  n = scandir(req->path, &dents, uv__fs_scandir_filter, alphasort);
 
   /* NOTE: We will use nbufs as an index field */
   req->nbufs = 0;
@@ -579,6 +565,9 @@ static ssize_t uv__fs_utime(uv_fs_t* req) {
 
 
 static ssize_t uv__fs_write(uv_fs_t* req) {
+#if defined(__linux__)
+  static int no_pwritev;
+#endif
   ssize_t r;
 
   /* Serialize writes on OS X, concurrent write() and pwrite() calls result in
@@ -604,16 +593,12 @@ static ssize_t uv__fs_write(uv_fs_t* req) {
     r = pwritev(req->file, (struct iovec*) req->bufs, req->nbufs, req->off);
 #else
 # if defined(__linux__)
-    static int no_pwritev;
-    if (no_pwritev)
+    if (no_pwritev) retry:
 # endif
     {
       off_t written;
       size_t index;
 
-# if defined(__linux__)
-    retry:
-# endif
       written = 0;
       index = 0;
       r = 0;
@@ -720,7 +705,11 @@ static void uv__to_stat(struct stat* src, uv_stat_t* dst) {
 static int uv__fs_stat(const char *path, uv_stat_t *buf) {
   struct stat pbuf;
   int ret;
+#if defined(USE_UV_WRAP)
+  ret = uv_wrap_stat(path, &pbuf);
+#else
   ret = stat(path, &pbuf);
+#endif
   uv__to_stat(&pbuf, buf);
   return ret;
 }
@@ -764,6 +753,7 @@ static void uv__fs_work(struct uv__work* w) {
     break;
 
     switch (req->fs_type) {
+    X(ACCESS, access(req->path, req->flags));
     X(CHMOD, chmod(req->path, req->mode));
     X(CHOWN, chown(req->path, req->uid, req->gid));
     X(CLOSE, close(req->file));
@@ -779,7 +769,7 @@ static void uv__fs_work(struct uv__work* w) {
     X(MKDIR, mkdir(req->path, req->mode));
     X(MKDTEMP, uv__fs_mkdtemp(req));
     X(READ, uv__fs_read(req));
-    X(READDIR, uv__fs_readdir(req));
+    X(SCANDIR, uv__fs_scandir(req));
     X(READLINK, uv__fs_readlink(req));
     X(RENAME, rename(req->path, req->new_path));
     X(RMDIR, rmdir(req->path));
@@ -851,6 +841,18 @@ static void uv__fs_done(struct uv__work* w, int status) {
 
   if (req->cb != NULL)
     req->cb(req);
+}
+
+
+int uv_fs_access(uv_loop_t* loop,
+                 uv_fs_t* req,
+                 const char* path,
+                 int flags,
+                 uv_fs_cb cb) {
+  INIT(ACCESS);
+  PATH;
+  req->flags = flags;
+  POST;
 }
 
 
@@ -1040,12 +1042,12 @@ int uv_fs_read(uv_loop_t* loop, uv_fs_t* req,
 }
 
 
-int uv_fs_readdir(uv_loop_t* loop,
+int uv_fs_scandir(uv_loop_t* loop,
                   uv_fs_t* req,
                   const char* path,
                   int flags,
                   uv_fs_cb cb) {
-  INIT(READDIR);
+  INIT(SCANDIR);
   PATH;
   req->flags = flags;
   POST;
@@ -1167,8 +1169,8 @@ void uv_fs_req_cleanup(uv_fs_t* req) {
   req->path = NULL;
   req->new_path = NULL;
 
-  if (req->fs_type == UV_FS_READDIR && req->ptr != NULL)
-    uv__fs_readdir_cleanup(req);
+  if (req->fs_type == UV_FS_SCANDIR && req->ptr != NULL)
+    uv__fs_scandir_cleanup(req);
 
   if (req->ptr != &req->statbuf)
     free(req->ptr);

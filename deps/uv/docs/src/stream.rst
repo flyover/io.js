@@ -16,6 +16,18 @@ Data types
 
     Stream handle type.
 
+.. c:type:: uv_connect_t
+
+    Connect request type.
+
+.. c:type:: uv_shutdown_t
+
+    Shutdown request type.
+
+.. c:type:: uv_write_t
+
+    Write request type.
+
 .. c:type:: void (*uv_read_cb)(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf)
 
     Callback called when data was read on a stream.
@@ -50,7 +62,7 @@ Data types
 
     Callback called when a stream server has received an incoming connection.
     The user can accept the connection by calling :c:func:`uv_accept`.
-    `status` will de 0 in case of success, < 0 otherwise.
+    `status` will be 0 in case of success, < 0 otherwise.
 
 
 Public members
@@ -59,6 +71,22 @@ Public members
 .. c:member:: size_t uv_stream_t.write_queue_size
 
     Contains the amount of queued bytes waiting to be sent. Readonly.
+
+.. c:member:: uv_stream_t* uv_connect_t.handle
+
+    Pointer to the stream where this connection request is running.
+
+.. c:member:: uv_stream_t* uv_shutdown_t.handle
+
+    Pointer to the stream where this shutdown request is running.
+
+.. c:member:: uv_stream_t* uv_write_t.handle
+
+    Pointer to the stream where this write request is running.
+
+.. c:member:: uv_stream_t* uv_write_t.send_handle
+
+    Pointer to the stream being sent using this write request..
 
 .. seealso:: The :c:type:`uv_handle_t` members also apply.
 
@@ -172,18 +200,20 @@ API
     When blocking mode is enabled all writes complete synchronously. The
     interface remains unchanged otherwise, e.g. completion or failure of the
     operation will still be reported through a callback which is made
-    asychronously.
+    asynchronously.
 
     .. warning::
         Relying too much on this API is not recommended. It is likely to change
         significantly in the future.
 
-        Currently this only works on Windows and only for
-        :c:type:`uv_pipe_t` handles.
+        Currently only works on Windows for :c:type:`uv_pipe_t` handles.
+        On UNIX platforms, all :c:type:`uv_stream_t` handles are supported.
 
         Also libuv currently makes no ordering guarantee when the blocking mode
         is changed after write requests have already been submitted. Therefore it is
         recommended to set the blocking mode immediately after opening or creating
         the stream.
+
+    .. versionchanged:: 1.4.0 UNIX implementation added.
 
 .. seealso:: The :c:type:`uv_handle_t` API functions also apply.

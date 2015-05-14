@@ -82,7 +82,7 @@ are created.
 
 ### Event: 'close'
 
-Emitted when a socket is closed with `close()`.  No new `message` events will be emitted
+Emitted after a socket is closed with `close()`.  No new `message` events will be emitted
 on this socket.
 
 ### Event: 'error'
@@ -170,7 +170,7 @@ and the `callback`(if specified) is called. Specifying both a
 "listening" event listener and `callback` is not harmful but not very
 useful.
 
-A bound datagram socket keeps the node process running to receive
+A bound datagram socket keeps the io.js process running to receive
 datagrams.
 
 If binding fails, an "error" event is generated. In rare case (e.g.
@@ -228,9 +228,10 @@ shown below.
     });
 
 
-### socket.close()
+### socket.close([callback])
 
-Close the underlying socket and stop listening for data on it.
+Close the underlying socket and stop listening for data on it. If a callback is
+provided, it is added as a listener for the ['close'](#dgram_event_close) event.
 
 ### socket.address()
 

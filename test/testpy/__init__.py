@@ -49,30 +49,34 @@ class SimpleTestCase(test.TestCase):
     self.mode = mode
     self.tmpdir = join(dirname(self.config.root), 'tmp')
     self.additional_flags = additional
+
+  def GetTmpDir(self):
+    return "%s.%d" % (self.tmpdir, self.thread_id)
+
   
   def AfterRun(self, result):
     # delete the whole tmp dir
     try:
-      rmtree(self.tmpdir)
+      rmtree(self.GetTmpDir())
     except:
       pass
     # make it again.
     try:
-      mkdir(self.tmpdir)
+      mkdir(self.GetTmpDir())
     except:
       pass
 
   def BeforeRun(self):
     # delete the whole tmp dir
     try:
-      rmtree(self.tmpdir)
+      rmtree(self.GetTmpDir())
     except:
       pass
     # make it again.
     # intermittently fails on win32, so keep trying
-    while not os.path.exists(self.tmpdir):
+    while not os.path.exists(self.GetTmpDir()):
       try:
-        mkdir(self.tmpdir)
+        mkdir(self.GetTmpDir())
       except:
         pass
   
@@ -105,7 +109,6 @@ class SimpleTestCase(test.TestCase):
   def GetSource(self):
     return open(self.file).read()
 
-
 class SimpleTestConfiguration(test.TestConfiguration):
 
   def __init__(self, context, root, section, additional=[]):
@@ -136,6 +139,18 @@ class SimpleTestConfiguration(test.TestConfiguration):
     if exists(status_file):
       test.ReadConfigurationInto(status_file, sections, defs)
 
+class ParallelTestConfiguration(SimpleTestConfiguration):
+  def __init__(self, context, root, section, additional=[]):
+    super(ParallelTestConfiguration, self).__init__(context, root, section,
+                                                    additional)
+
+  def ListTests(self, current_path, path, arch, mode):
+    result = super(ParallelTestConfiguration, self).ListTests(
+         current_path, path, arch, mode)
+    for test in result:
+      test.parallel = True
+    return result
+
 class AddonTestConfiguration(SimpleTestConfiguration):
   def __init__(self, context, root, section, additional=[]):
     super(AddonTestConfiguration, self).__init__(context, root, section)
@@ -158,5 +173,6 @@ class AddonTestConfiguration(SimpleTestConfiguration):
     for test in all_tests:
       if self.Contains(path, test):
         file_path = join(self.root, reduce(join, test[1:], "") + ".js")
-        result.append(SimpleTestCase(test, file_path, mode, self.context, self))
+        result.append(
+            SimpleTestCase(test, file_path, arch, mode, self.context, self))
     return result

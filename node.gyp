@@ -1,14 +1,14 @@
 {
   'variables': {
-    'v8_use_snapshot%': 'true',
+    'v8_use_snapshot%': 'false',
     'node_use_dtrace%': 'false',
+    'node_use_lttng%': 'false',
     'node_use_etw%': 'false',
     'node_use_perfctr%': 'false',
     'node_has_winsdk%': 'false',
     'node_shared_v8%': 'false',
     'node_shared_zlib%': 'false',
     'node_shared_http_parser%': 'false',
-    'node_shared_cares%': 'false',
     'node_shared_libuv%': 'false',
     'node_use_openssl%': 'true',
     'node_shared_openssl%': 'false',
@@ -16,6 +16,7 @@
     'node_v8_options%': '',
     'library_files': [
       'src/node.js',
+      'lib/_debug_agent.js',
       'lib/_debugger.js',
       'lib/_linklist.js',
       'lib/assert.js',
@@ -43,6 +44,7 @@
       'lib/net.js',
       'lib/os.js',
       'lib/path.js',
+      'lib/process.js',
       'lib/punycode.js',
       'lib/querystring.js',
       'lib/readline.js',
@@ -57,7 +59,6 @@
       'lib/string_decoder.js',
       'lib/sys.js',
       'lib/timers.js',
-      'lib/tracing.js',
       'lib/tls.js',
       'lib/_tls_common.js',
       'lib/_tls_legacy.js',
@@ -65,20 +66,20 @@
       'lib/tty.js',
       'lib/url.js',
       'lib/util.js',
+      'lib/v8.js',
       'lib/vm.js',
       'lib/zlib.js',
-      'deps/debugger-agent/lib/_debugger_agent.js',
     ],
   },
 
   'targets': [
     {
-      'target_name': 'node',
+      'target_name': 'iojs',
       'type': 'executable',
 
       'dependencies': [
         'node_js2c#host',
-        'deps/debugger-agent/debugger-agent.gyp:debugger-agent',
+        'deps/cares/cares.gyp:cares'
       ],
 
       'include_dirs': [
@@ -89,6 +90,8 @@
       ],
 
       'sources': [
+        'src/debug-agent.cc',
+        'src/async-wrap.cc',
         'src/fs_event_wrap.cc',
         'src/cares_wrap.cc',
         'src/handle_wrap.cc',
@@ -124,6 +127,7 @@
         'src/async-wrap-inl.h',
         'src/base-object.h',
         'src/base-object-inl.h',
+        'src/debug-agent.h',
         'src/env.h',
         'src/env-inl.h',
         'src/handle_wrap.h',
@@ -140,12 +144,12 @@
         'src/node_wrap.h',
         'src/node_i18n.h',
         'src/pipe_wrap.h',
-        'src/queue.h',
         'src/smalloc.h',
         'src/tty_wrap.h',
         'src/tcp_wrap.h',
         'src/udp_wrap.h',
-        'src/req_wrap.h',
+        'src/req-wrap.h',
+        'src/req-wrap-inl.h',
         'src/string_bytes.h',
         'src/stream_wrap.h',
         'src/tree.h',
@@ -161,11 +165,11 @@
       ],
 
       'defines': [
-        'NODE_WANT_INTERNALS=1',
-        'ARCH="<(target_arch)"',
-        'PLATFORM="<(OS)"',
+        'NODE_ARCH="<(target_arch)"',
+        'NODE_PLATFORM="<(OS)"',
         'NODE_TAG="<(node_tag)"',
         'NODE_V8_OPTIONS="<(node_v8_options)"',
+        'NODE_WANT_INTERNALS=1',
       ],
 
       'conditions': [
@@ -246,8 +250,7 @@
           'conditions': [
             [ 'OS=="linux"', {
               'sources': [
-                '<(SHARED_INTERMEDIATE_DIR)/node_dtrace_provider.o',
-                '<(SHARED_INTERMEDIATE_DIR)/libuv_dtrace_provider.o',
+                '<(SHARED_INTERMEDIATE_DIR)/node_dtrace_provider.o'
               ],
             }],
             [ 'OS!="mac" and OS!="linux"', {
@@ -257,6 +260,14 @@
               ]
             }
           ] ]
+        } ],
+        [ 'node_use_lttng=="true"', {
+          'defines': [ 'HAVE_LTTNG=1' ],
+          'include_dirs': [ '<(SHARED_INTERMEDIATE_DIR)' ],
+          'libraries': [ '-llttng-ust' ],
+          'sources': [
+            'src/node_lttng.cc'
+          ],
         } ],
         [ 'node_use_mdb=="true"', {
           'dependencies': [ 'node_mdb' ],
@@ -312,10 +323,6 @@
           'dependencies': [ 'deps/http_parser/http_parser.gyp:http_parser' ],
         }],
 
-        [ 'node_shared_cares=="false"', {
-          'dependencies': [ 'deps/cares/cares.gyp:cares' ],
-        }],
-
         [ 'node_shared_libuv=="false"', {
           'dependencies': [ 'deps/uv/uv.gyp:libuv' ],
         }],
@@ -324,10 +331,13 @@
           'sources': [
             'src/res/node.rc',
           ],
+          'defines!': [
+            'NODE_PLATFORM="win"',
+          ],
           'defines': [
             'FD_SETSIZE=1024',
             # we need to use node's preferred "win32" rather than gyp's preferred "win"
-            'PLATFORM="win32"',
+            'NODE_PLATFORM="win32"',
             '_UNICODE=1',
           ],
           'libraries': [ '-lpsapi.lib' ]
@@ -339,11 +349,11 @@
           # like Instruments require it for some features
           'libraries': [ '-framework CoreFoundation' ],
           'defines!': [
-            'PLATFORM="mac"',
+            'NODE_PLATFORM="mac"',
           ],
           'defines': [
             # we need to use node's preferred "darwin" rather than gyp's preferred "mac"
-            'PLATFORM="darwin"',
+            'NODE_PLATFORM="darwin"',
           ],
         }],
         [ 'OS=="freebsd"', {
@@ -358,12 +368,12 @@
             '-lumem',
           ],
           'defines!': [
-            'PLATFORM="solaris"',
+            'NODE_PLATFORM="solaris"',
           ],
           'defines': [
             # we need to use node's preferred "sunos"
             # rather than gyp's preferred "solaris"
-            'PLATFORM="sunos"',
+            'NODE_PLATFORM="sunos"',
           ],
         }],
         [ 'OS=="freebsd" or OS=="linux"', {
@@ -380,9 +390,6 @@
         }],
       ],
       'msvs_settings': {
-        'VCLinkerTool': {
-          'SubSystem': 1, # /subsystem:console
-        },
         'VCManifestTool': {
           'EmbedManifest': 'true',
           'AdditionalManifestFiles': 'src/res/node.exe.extra.manifest'
@@ -452,6 +459,9 @@
             [ 'node_use_dtrace=="false" and node_use_etw=="false"', {
               'inputs': [ 'src/notrace_macros.py' ]
             }],
+            ['node_use_lttng=="false"', {
+              'inputs': [ 'src/nolttng_macros.py' ]
+            }],
             [ 'node_use_perfctr=="false"', {
               'inputs': [ 'src/perfctr_macros.py' ]
             }]
@@ -469,7 +479,7 @@
       'target_name': 'node_dtrace_header',
       'type': 'none',
       'conditions': [
-        [ 'node_use_dtrace=="true"', {
+        [ 'node_use_dtrace=="true" and OS!="linux"', {
           'actions': [
             {
               'action_name': 'node_dtrace_header',
@@ -479,7 +489,18 @@
                 '-o', '<@(_outputs)' ]
             }
           ]
-        } ]
+        } ],
+        [ 'node_use_dtrace=="true" and OS=="linux"', {
+          'actions': [
+            {
+              'action_name': 'node_dtrace_header',
+              'inputs': [ 'src/node_provider.d' ],
+              'outputs': [ '<(SHARED_INTERMEDIATE_DIR)/node_provider.h' ],
+              'action': [ 'dtrace', '-h', '-s', '<@(_inputs)',
+                '-o', '<@(_outputs)' ]
+            }
+          ]
+        } ],
       ]
     },
     {
@@ -517,15 +538,13 @@
             {
               'action_name': 'node_dtrace_provider_o',
               'inputs': [
-                '<(OBJ_DIR)/libuv/deps/uv/src/unix/core.o',
-                '<(OBJ_DIR)/node/src/node_dtrace.o',
+                '<(OBJ_DIR)/iojs/src/node_dtrace.o',
               ],
               'outputs': [
-                '<(OBJ_DIR)/node/src/node_dtrace_provider.o'
+                '<(OBJ_DIR)/iojs/src/node_dtrace_provider.o'
               ],
               'action': [ 'dtrace', '-G', '-xnolibs', '-s', 'src/node_provider.d',
-                '-s', 'deps/uv/src/unix/uv-dtrace.d', '<@(_inputs)',
-                '-o', '<@(_outputs)' ]
+                '<@(_inputs)', '-o', '<@(_outputs)' ]
             }
           ]
         }],
@@ -540,17 +559,7 @@
               'action': [
                 'dtrace', '-C', '-G', '-s', '<@(_inputs)', '-o', '<@(_outputs)'
               ],
-            },
-            {
-              'action_name': 'libuv_dtrace_provider_o',
-              'inputs': [ 'deps/uv/src/unix/uv-dtrace.d' ],
-              'outputs': [
-                '<(SHARED_INTERMEDIATE_DIR)/libuv_dtrace_provider.o'
-              ],
-              'action': [
-                'dtrace', '-C', '-G', '-s', '<@(_inputs)', '-o', '<@(_outputs)'
-              ],
-            },
+            }
           ],
         }],
       ]
@@ -582,7 +591,7 @@
                 '<(SHARED_INTERMEDIATE_DIR)/v8constants.h'
               ],
               'outputs': [
-                '<(OBJ_DIR)/node/src/node_dtrace_ustack.o'
+                '<(OBJ_DIR)/iojs/src/node_dtrace_ustack.o'
               ],
               'conditions': [
                 [ 'target_arch=="ia32"', {

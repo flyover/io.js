@@ -1,24 +1,3 @@
-// Copyright Joyent, Inc. and other Node contributors.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the
-// "Software"), to deal in the Software without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Software, and to permit
-// persons to whom the Software is furnished to do so, subject to the
-// following conditions:
-//
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
-// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-// USE OR OTHER DEALINGS IN THE SOFTWARE.
-
 #ifndef SRC_STRING_BYTES_H_
 #define SRC_STRING_BYTES_H_
 
@@ -26,6 +5,8 @@
 
 #include "v8.h"
 #include "node.h"
+#include "env.h"
+#include "env-inl.h"
 
 namespace node {
 
@@ -33,6 +14,51 @@ extern int WRITE_UTF8_FLAGS;
 
 class StringBytes {
  public:
+  class InlineDecoder {
+   public:
+    InlineDecoder() : out_(nullptr) {
+    }
+
+    ~InlineDecoder() {
+      if (out_ != out_st_)
+        delete[] out_;
+      out_ = nullptr;
+    }
+
+    inline bool Decode(Environment* env,
+                       v8::Handle<v8::String> string,
+                       v8::Handle<v8::Value> encoding,
+                       enum encoding _default) {
+      enum encoding enc = ParseEncoding(env->isolate(), encoding, _default);
+      if (!StringBytes::IsValidString(env->isolate(), string, enc)) {
+        env->ThrowTypeError("Bad input string");
+        return false;
+      }
+
+      size_t buflen = StringBytes::StorageSize(env->isolate(), string, enc);
+      if (buflen > sizeof(out_st_))
+        out_ = new char[buflen];
+      else
+        out_ = out_st_;
+      size_ = StringBytes::Write(env->isolate(),
+                                 out_,
+                                 buflen,
+                                 string,
+                                 enc);
+      return true;
+    }
+
+    inline const char* out() const { return out_; }
+    inline size_t size() const { return size_; }
+
+   private:
+    static const int kStorageSize = 1024;
+
+    char out_st_[kStorageSize];
+    char* out_;
+    size_t size_;
+  };
+
   // Does the string match the encoding? Quick but non-exhaustive.
   // Example: a HEX string must have a length that's a multiple of two.
   // FIXME(bnoordhuis) IsMaybeValidString()? Naming things is hard...
@@ -71,10 +97,16 @@ class StringBytes {
                       int* chars_written = nullptr);
 
   // Take the bytes in the src, and turn it into a Buffer or String.
+  // Don't call with encoding=UCS2.
   static v8::Local<v8::Value> Encode(v8::Isolate* isolate,
                                      const char* buf,
                                      size_t buflen,
                                      enum encoding encoding);
+
+  // The input buffer should be in host endianness.
+  static v8::Local<v8::Value> Encode(v8::Isolate* isolate,
+                                     const uint16_t* buf,
+                                     size_t buflen);
 
   // Deprecated legacy interface
 

@@ -20,6 +20,8 @@ namespace compiler {
   V(IA32Xor)                       \
   V(IA32Sub)                       \
   V(IA32Imul)                      \
+  V(IA32ImulHigh)                  \
+  V(IA32UmulHigh)                  \
   V(IA32Idiv)                      \
   V(IA32Udiv)                      \
   V(IA32Not)                       \
@@ -35,12 +37,19 @@ namespace compiler {
   V(SSEFloat64Div)                 \
   V(SSEFloat64Mod)                 \
   V(SSEFloat64Sqrt)                \
+  V(SSEFloat64Floor)               \
+  V(SSEFloat64Ceil)                \
+  V(SSEFloat64RoundTruncate)       \
   V(SSECvtss2sd)                   \
   V(SSECvtsd2ss)                   \
   V(SSEFloat64ToInt32)             \
   V(SSEFloat64ToUint32)            \
   V(SSEInt32ToFloat64)             \
   V(SSEUint32ToFloat64)            \
+  V(AVXFloat64Add)                 \
+  V(AVXFloat64Sub)                 \
+  V(AVXFloat64Mul)                 \
+  V(AVXFloat64Div)                 \
   V(IA32Movsxbl)                   \
   V(IA32Movzxbl)                   \
   V(IA32Movb)                      \
@@ -50,6 +59,7 @@ namespace compiler {
   V(IA32Movl)                      \
   V(IA32Movss)                     \
   V(IA32Movsd)                     \
+  V(IA32Lea)                       \
   V(IA32Push)                      \
   V(IA32StoreWriteBarrier)
 

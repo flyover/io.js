@@ -1,5 +1,8 @@
 var assert = require('assert');
+var fs = require('fs');
 var path = require('path');
+var spawn = require('child_process').spawn;
+
 var silent = +process.env.NODE_BENCH_SILENT;
 
 exports.PORT = process.env.PORT || 12346;
@@ -7,15 +10,28 @@ exports.PORT = process.env.PORT || 12346;
 // If this is the main module, then run the benchmarks
 if (module === require.main) {
   var type = process.argv[2];
+  var testFilter = process.argv[3];
   if (!type) {
-    console.error('usage:\n ./node benchmark/common.js <type>');
+    console.error('usage:\n ./iojs benchmark/common.js <type> [testFilter]');
     process.exit(1);
   }
 
-  var fs = require('fs');
   var dir = path.join(__dirname, type);
   var tests = fs.readdirSync(dir);
-  var spawn = require('child_process').spawn;
+
+  if (testFilter) {
+    var filteredTests = tests.filter(function(item){
+      if (item.lastIndexOf(testFilter) >= 0) {
+        return item;
+      }
+    });
+
+    if (filteredTests.length === 0) {
+      console.error('%s is not found in \n %j', testFilter, tests);
+      return;
+    }
+    tests = filteredTests;
+  }
 
   runBenchmarks();
 }
@@ -34,9 +50,9 @@ function runBenchmarks() {
   var a = (process.execArgv || []).concat(test);
   var child = spawn(process.execPath, a, { stdio: 'inherit' });
   child.on('close', function(code) {
-    if (code)
+    if (code) {
       process.exit(code);
-    else {
+    } else {
       console.log('');
       runBenchmarks();
     }
@@ -65,7 +81,6 @@ Benchmark.prototype.http = function(p, args, cb) {
   var self = this;
   var wrk = path.resolve(__dirname, '..', 'tools', 'wrk', 'wrk');
   var regexp = /Requests\/sec:[ \t]+([0-9\.]+)/;
-  var spawn = require('child_process').spawn;
   var url = 'http://127.0.0.1:' + exports.PORT + p;
 
   args = args.concat(url);
@@ -87,8 +102,8 @@ Benchmark.prototype.http = function(p, args, cb) {
       console.error('wrk failed with ' + code);
       process.exit(code)
     }
-    var m = out.match(regexp);
-    var qps = m && +m[1];
+    var match = out.match(regexp);
+    var qps = match && +match[1];
     if (!qps) {
       console.error('%j', out);
       console.error('wrk produced strange output');
@@ -124,7 +139,6 @@ Benchmark.prototype._run = function() {
     return newSet;
   }, [[main]]);
 
-  var spawn = require('child_process').spawn;
   var node = process.execPath;
   var i = 0;
   function run() {
@@ -149,11 +163,11 @@ function parseOpts(options) {
   var num = keys.length;
   var conf = {};
   for (var i = 2; i < process.argv.length; i++) {
-    var m = process.argv[i].match(/^(.+)=(.+)$/);
-    if (!m || !m[1] || !m[2] || !options[m[1]])
+    var match = process.argv[i].match(/^(.+)=(.+)$/);
+    if (!match || !match[1] || !match[2] || !options[match[1]]) {
       return null;
-    else {
-      conf[m[1]] = isFinite(m[2]) ? +m[2] : m[2]
+    } else {
+      conf[match[1]] = isFinite(match[2]) ? +match[2] : match[2]
       num--;
     }
   }
@@ -169,16 +183,19 @@ function parseOpts(options) {
 Benchmark.prototype.start = function() {
   if (this._started)
     throw new Error('Called start more than once in a single benchmark');
+
   this._started = true;
   this._start = process.hrtime();
 };
 
 Benchmark.prototype.end = function(operations) {
   var elapsed = process.hrtime(this._start);
+
   if (!this._started)
     throw new Error('called end without start');
   if (typeof operations !== 'number')
     throw new Error('called end() without specifying operation count');
+
   var time = elapsed[0] + elapsed[1]/1e9;
   var rate = operations/time;
   this.report(rate);
@@ -187,7 +204,8 @@ Benchmark.prototype.end = function(operations) {
 Benchmark.prototype.report = function(value) {
   var heading = this.getHeading();
   if (!silent)
-    console.log('%s: %s', heading, value.toPrecision(5));
+    console.log('%s: %s', heading, value.toFixed(5));
+
   process.exit(0);
 };
 
@@ -196,4 +214,4 @@ Benchmark.prototype.getHeading = function() {
   return this._name + ' ' + Object.keys(conf).map(function(key) {
     return key + '=' + conf[key];
   }).join(' ');
-}
+};

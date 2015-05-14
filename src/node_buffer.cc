@@ -1,25 +1,3 @@
-// Copyright Joyent, Inc. and other Node contributors.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the
-// "Software"), to deal in the Software without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Software, and to permit
-// persons to whom the Software is furnished to do so, subject to the
-// following conditions:
-//
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
-// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-// USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-
 #include "node.h"
 #include "node_buffer.h"
 
@@ -264,6 +242,44 @@ void StringSlice(const FunctionCallbackInfo<Value>& args) {
 }
 
 
+template <>
+void StringSlice<UCS2>(const FunctionCallbackInfo<Value>& args) {
+  Environment* env = Environment::GetCurrent(args);
+
+  ARGS_THIS(args.This())
+  SLICE_START_END(args[0], args[1], obj_length)
+  length /= 2;
+
+  const char* data = obj_data + start;
+  const uint16_t* buf;
+  bool release = false;
+
+  // Node's "ucs2" encoding expects LE character data inside a Buffer, so we
+  // need to reorder on BE platforms.  See http://nodejs.org/api/buffer.html
+  // regarding Node's "ucs2" encoding specification.
+  const bool aligned = (reinterpret_cast<uintptr_t>(data) % sizeof(*buf) == 0);
+  if (IsLittleEndian() && aligned) {
+    buf = reinterpret_cast<const uint16_t*>(data);
+  } else {
+    // Make a copy to avoid unaligned accesses in v8::String::NewFromTwoByte().
+    uint16_t* copy = new uint16_t[length];
+    for (size_t i = 0, k = 0; i < length; i += 1, k += 2) {
+      // Assumes that the input is little endian.
+      const uint8_t lo = static_cast<uint8_t>(data[k + 0]);
+      const uint8_t hi = static_cast<uint8_t>(data[k + 1]);
+      copy[i] = lo | hi << 8;
+    }
+    buf = copy;
+    release = true;
+  }
+
+  args.GetReturnValue().Set(StringBytes::Encode(env->isolate(), buf, length));
+
+  if (release)
+    delete[] buf;
+}
+
+
 void BinarySlice(const FunctionCallbackInfo<Value>& args) {
   StringSlice<BINARY>(args);
 }
@@ -298,7 +314,7 @@ void Base64Slice(const FunctionCallbackInfo<Value>& args) {
 void Copy(const FunctionCallbackInfo<Value> &args) {
   Environment* env = Environment::GetCurrent(args);
 
-  Local<Object> target = args[0]->ToObject();
+  Local<Object> target = args[0]->ToObject(env->isolate());
 
   if (!HasInstance(target))
     return env->ThrowTypeError("first arg should be a Buffer");
@@ -348,7 +364,7 @@ void Fill(const FunctionCallbackInfo<Value>& args) {
     return;
   }
 
-  node::Utf8Value str(args[1]);
+  node::Utf8Value str(args.GetIsolate(), args[1]);
   size_t str_length = str.length();
   size_t in_there = str_length;
   char* ptr = obj_data + start + str_length;
@@ -383,7 +399,7 @@ void StringWrite(const FunctionCallbackInfo<Value>& args) {
   if (!args[0]->IsString())
     return env->ThrowTypeError("Argument must be a string");
 
-  Local<String> str = args[0]->ToString();
+  Local<String> str = args[0]->ToString(env->isolate());
 
   if (encoding == HEX && str->Length() % 2 != 0)
     return env->ThrowTypeError("Invalid hex string");
@@ -545,7 +561,7 @@ void ByteLength(const FunctionCallbackInfo<Value> &args) {
   if (!args[0]->IsString())
     return env->ThrowTypeError("Argument must be a string");
 
-  Local<String> s = args[0]->ToString();
+  Local<String> s = args[0]->ToString(env->isolate());
   enum encoding e = ParseEncoding(env->isolate(), args[1], UTF8);
 
   uint32_t size = StringBytes::Size(env->isolate(), s, e);
@@ -620,25 +636,6 @@ void SetupBufferJS(const FunctionCallbackInfo<Value>& args) {
   proto->ForceSet(env->offset_string(),
                   Uint32::New(env->isolate(), 0),
                   v8::ReadOnly);
-
-  CHECK(args[1]->IsObject());
-
-  Local<Object> internal = args[1].As<Object>();
-  ASSERT(internal->IsObject());
-
-  env->SetMethod(internal, "byteLength", ByteLength);
-  env->SetMethod(internal, "compare", Compare);
-  env->SetMethod(internal, "fill", Fill);
-
-  env->SetMethod(internal, "readDoubleBE", ReadDoubleBE);
-  env->SetMethod(internal, "readDoubleLE", ReadDoubleLE);
-  env->SetMethod(internal, "readFloatBE", ReadFloatBE);
-  env->SetMethod(internal, "readFloatLE", ReadFloatLE);
-
-  env->SetMethod(internal, "writeDoubleBE", WriteDoubleBE);
-  env->SetMethod(internal, "writeDoubleLE", WriteDoubleLE);
-  env->SetMethod(internal, "writeFloatBE", WriteFloatBE);
-  env->SetMethod(internal, "writeFloatLE", WriteFloatLE);
 }
 
 
@@ -646,8 +643,23 @@ void Initialize(Handle<Object> target,
                 Handle<Value> unused,
                 Handle<Context> context) {
   Environment* env = Environment::GetCurrent(context);
-  target->Set(FIXED_ONE_BYTE_STRING(env->isolate(), "setupBufferJS"),
-              env->NewFunctionTemplate(SetupBufferJS)->GetFunction());
+
+  env->SetMethod(target, "setupBufferJS", SetupBufferJS);
+
+  env->SetMethod(target, "byteLength", ByteLength);
+  env->SetMethod(target, "byteLength", ByteLength);
+  env->SetMethod(target, "compare", Compare);
+  env->SetMethod(target, "fill", Fill);
+
+  env->SetMethod(target, "readDoubleBE", ReadDoubleBE);
+  env->SetMethod(target, "readDoubleLE", ReadDoubleLE);
+  env->SetMethod(target, "readFloatBE", ReadFloatBE);
+  env->SetMethod(target, "readFloatLE", ReadFloatLE);
+
+  env->SetMethod(target, "writeDoubleBE", WriteDoubleBE);
+  env->SetMethod(target, "writeDoubleLE", WriteDoubleLE);
+  env->SetMethod(target, "writeFloatBE", WriteFloatBE);
+  env->SetMethod(target, "writeFloatLE", WriteFloatLE);
 }
 
 

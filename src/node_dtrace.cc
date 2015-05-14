@@ -1,25 +1,3 @@
-// Copyright Joyent, Inc. and other Node contributors.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the
-// "Software"), to deal in the Software without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Software, and to permit
-// persons to whom the Software is furnished to do so, subject to the
-// following conditions:
-//
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
-// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-// USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-
 #include "util.h"
 
 #ifdef HAVE_DTRACE
@@ -44,10 +22,6 @@
 #define NODE_NET_SERVER_CONNECTION_ENABLED() (0)
 #define NODE_NET_STREAM_END(arg0)
 #define NODE_NET_STREAM_END_ENABLED() (0)
-#define NODE_NET_SOCKET_READ(arg0, arg1, arg2, arg3, arg4)
-#define NODE_NET_SOCKET_READ_ENABLED() (0)
-#define NODE_NET_SOCKET_WRITE(arg0, arg1, arg2, arg3, arg4)
-#define NODE_NET_SOCKET_WRITE_ENABLED() (0)
 #define NODE_GC_START(arg0, arg1, arg2)
 #define NODE_GC_DONE(arg0, arg1, arg2)
 #endif
@@ -76,8 +50,8 @@ using v8::Value;
     return env->ThrowError( \
         "expected object for " #obj " to contain string member " #member); \
   } \
-  node::Utf8Value _##member(obj->Get(OneByteString(env->isolate(), \
-                                                     #member))); \
+  node::Utf8Value _##member(env->isolate(), \
+      obj->Get(OneByteString(env->isolate(), #member))); \
   if ((*(const char **)valp = *_##member) == nullptr) \
     *(const char **)valp = "<unknown>";
 
@@ -87,7 +61,7 @@ using v8::Value;
       "expected object for " #obj " to contain integer member " #member); \
   } \
   *valp = obj->Get(OneByteString(env->isolate(), #member)) \
-      ->ToInteger()->Value();
+      ->ToInteger(env->isolate())->Value();
 
 #define SLURP_OBJECT(obj, member, valp) \
   if (!(obj)->IsObject()) { \
@@ -161,37 +135,6 @@ void DTRACE_NET_STREAM_END(const FunctionCallbackInfo<Value>& args) {
   NODE_NET_STREAM_END(&conn, conn.remote, conn.port, conn.fd);
 }
 
-
-void DTRACE_NET_SOCKET_READ(const FunctionCallbackInfo<Value>& args) {
-  if (!NODE_NET_SOCKET_READ_ENABLED())
-    return;
-  Environment* env = Environment::GetCurrent(args);
-  SLURP_CONNECTION(args[0], conn);
-
-  if (!args[1]->IsNumber()) {
-    return env->ThrowError("expected argument 1 to be number of bytes");
-  }
-
-  int nbytes = args[1]->Int32Value();
-  NODE_NET_SOCKET_READ(&conn, nbytes, conn.remote, conn.port, conn.fd);
-}
-
-
-void DTRACE_NET_SOCKET_WRITE(const FunctionCallbackInfo<Value>& args) {
-  if (!NODE_NET_SOCKET_WRITE_ENABLED())
-    return;
-  Environment* env = Environment::GetCurrent(args);
-  SLURP_CONNECTION(args[0], conn);
-
-  if (!args[1]->IsNumber()) {
-    return env->ThrowError("expected argument 1 to be number of bytes");
-  }
-
-  int nbytes = args[1]->Int32Value();
-  NODE_NET_SOCKET_WRITE(&conn, nbytes, conn.remote, conn.port, conn.fd);
-}
-
-
 void DTRACE_HTTP_SERVER_REQUEST(const FunctionCallbackInfo<Value>& args) {
   node_dtrace_http_server_request_t req;
 
@@ -215,7 +158,7 @@ void DTRACE_HTTP_SERVER_REQUEST(const FunctionCallbackInfo<Value>& args) {
   }
 
   Local<Value> strfwdfor = headers->Get(env->x_forwarded_string());
-  node::Utf8Value fwdfor(strfwdfor);
+  node::Utf8Value fwdfor(env->isolate(), strfwdfor);
 
   if (!strfwdfor->IsString() || (req.forwardedFor = *fwdfor) == nullptr)
     req.forwardedFor = const_cast<char*>("");
@@ -308,8 +251,6 @@ void InitDTrace(Environment* env, Handle<Object> target) {
 #define NODE_PROBE(name) #name, name
     { NODE_PROBE(DTRACE_NET_SERVER_CONNECTION) },
     { NODE_PROBE(DTRACE_NET_STREAM_END) },
-    { NODE_PROBE(DTRACE_NET_SOCKET_READ) },
-    { NODE_PROBE(DTRACE_NET_SOCKET_WRITE) },
     { NODE_PROBE(DTRACE_HTTP_SERVER_REQUEST) },
     { NODE_PROBE(DTRACE_HTTP_SERVER_RESPONSE) },
     { NODE_PROBE(DTRACE_HTTP_CLIENT_REQUEST) },

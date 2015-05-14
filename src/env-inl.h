@@ -1,24 +1,3 @@
-// Copyright Joyent, Inc. and other Node contributors.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the
-// "Software"), to deal in the Software without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Software, and to permit
-// persons to whom the Software is furnished to do so, subject to the
-// following conditions:
-//
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
-// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-// USE OR OTHER DEALINGS IN THE SOFTWARE.
-
 #ifndef SRC_ENV_INL_H_
 #define SRC_ENV_INL_H_
 
@@ -33,40 +12,6 @@
 #include <stdint.h>
 
 namespace node {
-
-inline Environment::GCInfo::GCInfo()
-    : type_(static_cast<v8::GCType>(0)),
-      flags_(static_cast<v8::GCCallbackFlags>(0)),
-      timestamp_(0) {
-}
-
-inline Environment::GCInfo::GCInfo(v8::Isolate* isolate,
-                                   v8::GCType type,
-                                   v8::GCCallbackFlags flags,
-                                   uint64_t timestamp)
-    : type_(type),
-      flags_(flags),
-      timestamp_(timestamp) {
-  isolate->GetHeapStatistics(&stats_);
-}
-
-inline v8::GCType Environment::GCInfo::type() const {
-  return type_;
-}
-
-inline v8::GCCallbackFlags Environment::GCInfo::flags() const {
-  return flags_;
-}
-
-inline v8::HeapStatistics* Environment::GCInfo::stats() const {
-  // TODO(bnoordhuis) Const-ify once https://codereview.chromium.org/63693005
-  // lands and makes it way into a stable release.
-  return const_cast<v8::HeapStatistics*>(&stats_);
-}
-
-inline uint64_t Environment::GCInfo::timestamp() const {
-  return timestamp_;
-}
 
 inline Environment::IsolateData* Environment::IsolateData::Get(
     v8::Isolate* isolate) {
@@ -99,9 +44,7 @@ inline Environment::IsolateData::IsolateData(v8::Isolate* isolate,
     PropertyName ## _(isolate, FIXED_ONE_BYTE_STRING(isolate, StringValue)),
     PER_ISOLATE_STRING_PROPERTIES(V)
 #undef V
-    ref_count_(0) {
-  QUEUE_INIT(&gc_tracker_queue_);
-}
+    ref_count_(0) {}
 
 inline uv_loop_t* Environment::IsolateData::event_loop() const {
   return event_loop_;
@@ -111,25 +54,20 @@ inline v8::Isolate* Environment::IsolateData::isolate() const {
   return isolate_;
 }
 
-inline Environment::AsyncListener::AsyncListener() {
-  for (int i = 0; i < kFieldsCount; ++i)
-    fields_[i] = 0;
+inline Environment::AsyncHooks::AsyncHooks() {
+  for (int i = 0; i < kFieldsCount; i++) fields_[i] = 0;
 }
 
-inline uint32_t* Environment::AsyncListener::fields() {
+inline uint32_t* Environment::AsyncHooks::fields() {
   return fields_;
 }
 
-inline int Environment::AsyncListener::fields_count() const {
+inline int Environment::AsyncHooks::fields_count() const {
   return kFieldsCount;
 }
 
-inline bool Environment::AsyncListener::has_listener() const {
-  return fields_[kHasListener] > 0;
-}
-
-inline uint32_t Environment::AsyncListener::watched_providers() const {
-  return fields_[kWatchedProviders];
+inline bool Environment::AsyncHooks::call_init_hook() {
+  return fields_[kCallInitHook] != 0;
 }
 
 inline Environment::DomainFlag::DomainFlag() {
@@ -227,6 +165,7 @@ inline Environment::Environment(v8::Local<v8::Context> context,
       isolate_data_(IsolateData::GetOrCreate(context->GetIsolate(), loop)),
       using_smalloc_alloc_cb_(false),
       using_domains_(false),
+      using_asyncwrap_(false),
       printed_error_(false),
       debugger_agent_(this),
       context_(context->GetIsolate(), context) {
@@ -236,10 +175,6 @@ inline Environment::Environment(v8::Local<v8::Context> context,
   set_binding_cache_object(v8::Object::New(isolate()));
   set_module_load_list_array(v8::Array::New(isolate()));
   RB_INIT(&cares_task_list_);
-  QUEUE_INIT(&gc_tracker_queue_);
-  QUEUE_INIT(&req_wrap_queue_);
-  QUEUE_INIT(&handle_wrap_queue_);
-  QUEUE_INIT(&handle_cleanup_queue_);
   handle_cleanup_waiting_ = 0;
 }
 
@@ -255,11 +190,7 @@ inline Environment::~Environment() {
 }
 
 inline void Environment::CleanupHandles() {
-  while (!QUEUE_EMPTY(&handle_cleanup_queue_)) {
-    QUEUE* q = QUEUE_HEAD(&handle_cleanup_queue_);
-    QUEUE_REMOVE(q);
-
-    HandleCleanup* hc = ContainerOf(&HandleCleanup::handle_cleanup_queue_, q);
+  while (HandleCleanup* hc = handle_cleanup_queue_.PopFront()) {
     handle_cleanup_waiting_++;
     hc->cb_(this, hc->handle_, hc->arg_);
     delete hc;
@@ -277,14 +208,9 @@ inline v8::Isolate* Environment::isolate() const {
   return isolate_;
 }
 
-inline bool Environment::has_async_listener() const {
+inline bool Environment::call_async_init_hook() const {
   // The const_cast is okay, it doesn't violate conceptual const-ness.
-  return const_cast<Environment*>(this)->async_listener()->has_listener();
-}
-
-inline uint32_t Environment::watched_providers() const {
-  // The const_cast is okay, it doesn't violate conceptual const-ness.
-  return const_cast<Environment*>(this)->async_listener()->watched_providers();
+  return const_cast<Environment*>(this)->async_hooks()->call_init_hook();
 }
 
 inline bool Environment::in_domain() const {
@@ -326,8 +252,7 @@ inline uv_check_t* Environment::idle_check_handle() {
 inline void Environment::RegisterHandleCleanup(uv_handle_t* handle,
                                                HandleCleanupCb cb,
                                                void *arg) {
-  HandleCleanup* hc = new HandleCleanup(handle, cb, arg);
-  QUEUE_INSERT_TAIL(&handle_cleanup_queue_, &hc->handle_cleanup_queue_);
+  handle_cleanup_queue_.PushBack(new HandleCleanup(handle, cb, arg));
 }
 
 inline void Environment::FinishHandleCleanup(uv_handle_t* handle) {
@@ -338,8 +263,8 @@ inline uv_loop_t* Environment::event_loop() const {
   return isolate_data()->event_loop();
 }
 
-inline Environment::AsyncListener* Environment::async_listener() {
-  return &async_listener_count_;
+inline Environment::AsyncHooks* Environment::async_hooks() {
+  return &async_hooks_;
 }
 
 inline Environment::DomainFlag* Environment::domain_flag() {
@@ -364,6 +289,14 @@ inline bool Environment::using_domains() const {
 
 inline void Environment::set_using_domains(bool value) {
   using_domains_ = value;
+}
+
+inline bool Environment::using_asyncwrap() const {
+  return using_asyncwrap_;
+}
+
+inline void Environment::set_using_asyncwrap(bool value) {
+  using_asyncwrap_ = value;
 }
 
 inline bool Environment::printed_error() const {
@@ -445,9 +378,10 @@ inline void Environment::ThrowErrnoException(int errorno,
 inline void Environment::ThrowUVException(int errorno,
                                           const char* syscall,
                                           const char* message,
-                                          const char* path) {
+                                          const char* path,
+                                          const char* dest) {
   isolate()->ThrowException(
-      UVException(isolate(), errorno, syscall, message, path));
+      UVException(isolate(), errorno, syscall, message, path, dest));
 }
 
 inline v8::Local<v8::FunctionTemplate>

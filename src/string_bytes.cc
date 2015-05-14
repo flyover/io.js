@@ -1,24 +1,3 @@
-// Copyright Joyent, Inc. and other Node contributors.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the
-// "Software"), to deal in the Software without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Software, and to permit
-// persons to whom the Software is furnished to do so, subject to the
-// following conditions:
-//
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
-// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-// USE OR OTHER DEALINGS IN THE SOFTWARE.
-
 #include "string_bytes.h"
 
 #include "node.h"
@@ -53,11 +32,11 @@ class ExternString: public ResourceType {
       isolate()->AdjustAmountOfExternalAllocatedMemory(change_in_bytes);
     }
 
-    const TypeName* data() const {
+    const TypeName* data() const override {
       return data_;
     }
 
-    size_t length() const {
+    size_t length() const override {
       return length_;
     }
 
@@ -106,7 +85,7 @@ class ExternString: public ResourceType {
 };
 
 
-typedef ExternString<String::ExternalAsciiStringResource,
+typedef ExternString<String::ExternalOneByteStringResource,
                      char> ExternOneByteString;
 typedef ExternString<String::ExternalStringResource,
                      uint16_t> ExternTwoByteString;
@@ -270,9 +249,9 @@ bool StringBytes::GetExternalParts(Isolate* isolate,
 
   Local<String> str = val.As<String>();
 
-  if (str->IsExternalAscii()) {
-    const String::ExternalAsciiStringResource* ext;
-    ext = str->GetExternalAsciiStringResource();
+  if (str->IsExternalOneByte()) {
+    const String::ExternalOneByteStringResource* ext;
+    ext = str->GetExternalOneByteStringResource();
     *data = ext->data();
     *len = ext->length();
     return true;
@@ -409,7 +388,7 @@ size_t StringBytes::StorageSize(Isolate* isolate,
     return Buffer::Length(val);
   }
 
-  Local<String> str = val->ToString();
+  Local<String> str = val->ToString(isolate);
 
   switch (encoding) {
     case BINARY:
@@ -461,7 +440,7 @@ size_t StringBytes::Size(Isolate* isolate,
   if (GetExternalParts(isolate, val, &data, &data_size))
     return data_size;
 
-  Local<String> str = val->ToString();
+  Local<String> str = val->ToString(isolate);
 
   switch (encoding) {
     case BINARY:
@@ -690,6 +669,7 @@ Local<Value> StringBytes::Encode(Isolate* isolate,
                                  enum encoding encoding) {
   EscapableHandleScope scope(isolate);
 
+  CHECK_NE(encoding, UCS2);
   CHECK_LE(buflen, Buffer::kMaxLength);
   if (!buflen && encoding != BUFFER)
     return scope.Escape(String::Empty(isolate));
@@ -747,32 +727,6 @@ Local<Value> StringBytes::Encode(Isolate* isolate,
       break;
     }
 
-    case UCS2: {
-      const uint16_t* out = reinterpret_cast<const uint16_t*>(buf);
-      uint16_t* dst = nullptr;
-      if (IsBigEndian()) {
-        // Node's "ucs2" encoding expects LE character data inside a
-        // Buffer, so we need to reorder on BE platforms.  See
-        // http://nodejs.org/api/buffer.html regarding Node's "ucs2"
-        // encoding specification
-        dst = new uint16_t[buflen / 2];
-        for (size_t i = 0; i < buflen / 2; i++) {
-          dst[i] = (out[i] << 8) | (out[i] >> 8);
-        }
-        out = dst;
-      }
-      if (buflen < EXTERN_APEX)
-        val = String::NewFromTwoByte(isolate,
-                                     out,
-                                     String::kNormalString,
-                                     buflen / 2);
-      else
-        val = ExternTwoByteString::NewFromCopy(isolate, out, buflen / 2);
-      if (dst)
-        delete[] dst;
-      break;
-    }
-
     case HEX: {
       size_t dlen = buflen * 2;
       char* dst = new char[dlen];
@@ -794,6 +748,28 @@ Local<Value> StringBytes::Encode(Isolate* isolate,
   }
 
   return scope.Escape(val);
+}
+
+
+Local<Value> StringBytes::Encode(Isolate* isolate,
+                                 const uint16_t* buf,
+                                 size_t buflen) {
+  const uint16_t* src = buf;
+
+  Local<String> val;
+  if (buflen < EXTERN_APEX) {
+    val = String::NewFromTwoByte(isolate,
+                                 src,
+                                 String::kNormalString,
+                                 buflen);
+  } else {
+    val = ExternTwoByteString::NewFromCopy(isolate, src, buflen);
+  }
+
+  if (src != buf)
+    delete[] src;
+
+  return val;
 }
 
 }  // namespace node

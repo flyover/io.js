@@ -1,34 +1,14 @@
-// Copyright Joyent, Inc. and other Node contributors.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the
-// "Software"), to deal in the Software without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Software, and to permit
-// persons to whom the Software is furnished to do so, subject to the
-// following conditions:
-//
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
-// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-// USE OR OTHER DEALINGS IN THE SOFTWARE.
-
 #ifndef SRC_ENV_H_
 #define SRC_ENV_H_
 
 #include "ares.h"
+#include "debug-agent.h"
+#include "handle_wrap.h"
+#include "req-wrap.h"
 #include "tree.h"
 #include "util.h"
 #include "uv.h"
 #include "v8.h"
-#include "queue.h"
-#include "debugger-agent.h"
 
 #include <stdint.h>
 
@@ -64,8 +44,8 @@ namespace node {
   V(address_string, "address")                                                \
   V(args_string, "args")                                                      \
   V(argv_string, "argv")                                                      \
-  V(async_queue_string, "_asyncQueue")                                        \
   V(async, "async")                                                           \
+  V(async_queue_string, "_asyncQueue")                                        \
   V(atime_string, "atime")                                                    \
   V(birthtime_string, "birthtime")                                            \
   V(blksize_string, "blksize")                                                \
@@ -82,6 +62,7 @@ namespace node {
   V(cwd_string, "cwd")                                                        \
   V(debug_port_string, "debugPort")                                           \
   V(debug_string, "debug")                                                    \
+  V(dest_string, "dest")                                                      \
   V(detached_string, "detached")                                              \
   V(dev_string, "dev")                                                        \
   V(disposed_string, "_disposed")                                             \
@@ -113,8 +94,6 @@ namespace node {
   V(fsevent_string, "FSEvent")                                                \
   V(gid_string, "gid")                                                        \
   V(handle_string, "handle")                                                  \
-  V(headers_string, "headers")                                                \
-  V(heap_size_limit_string, "heap_size_limit")                                \
   V(heap_total_string, "heapTotal")                                           \
   V(heap_used_string, "heapUsed")                                             \
   V(hostmaster_string, "hostmaster")                                          \
@@ -135,7 +114,6 @@ namespace node {
   V(mark_sweep_compact_string, "mark-sweep-compact")                          \
   V(max_buffer_string, "maxBuffer")                                           \
   V(message_string, "message")                                                \
-  V(method_string, "method")                                                  \
   V(minttl_string, "minttl")                                                  \
   V(mode_string, "mode")                                                      \
   V(model_string, "model")                                                    \
@@ -197,7 +175,6 @@ namespace node {
   V(service_string, "service")                                                \
   V(servername_string, "servername")                                          \
   V(session_id_string, "sessionId")                                           \
-  V(should_keep_alive_string, "shouldKeepAlive")                              \
   V(signal_string, "signal")                                                  \
   V(size_string, "size")                                                      \
   V(smalloc_p_string, "_smalloc_p")                                           \
@@ -205,8 +182,6 @@ namespace node {
   V(sni_context_string, "sni_context")                                        \
   V(speed_string, "speed")                                                    \
   V(stack_string, "stack")                                                    \
-  V(status_code_string, "statusCode")                                         \
-  V(status_message_string, "statusMessage")                                   \
   V(status_string, "status")                                                  \
   V(stdio_string, "stdio")                                                    \
   V(subject_string, "subject")                                                \
@@ -224,22 +199,14 @@ namespace node {
   V(tls_sni_string, "tls_sni")                                                \
   V(tls_string, "tls")                                                        \
   V(tls_ticket_string, "tlsTicket")                                           \
-  V(total_heap_size_executable_string, "total_heap_size_executable")          \
-  V(total_heap_size_string, "total_heap_size")                                \
-  V(total_physical_size_string, "total_physical_size")                        \
   V(type_string, "type")                                                      \
   V(uid_string, "uid")                                                        \
   V(unknown_string, "<unknown>")                                              \
-  V(upgrade_string, "upgrade")                                                \
-  V(url_string, "url")                                                        \
-  V(used_heap_size_string, "used_heap_size")                                  \
   V(user_string, "user")                                                      \
   V(uv_string, "uv")                                                          \
   V(valid_from_string, "valid_from")                                          \
   V(valid_to_string, "valid_to")                                              \
   V(verify_error_string, "verifyError")                                       \
-  V(version_major_string, "versionMajor")                                     \
-  V(version_minor_string, "versionMinor")                                     \
   V(version_string, "version")                                                \
   V(weight_string, "weight")                                                  \
   V(windows_verbatim_arguments_string, "windowsVerbatimArguments")            \
@@ -250,15 +217,14 @@ namespace node {
   V(zero_return_string, "ZERO_RETURN")                                        \
 
 #define ENVIRONMENT_STRONG_PERSISTENT_PROPERTIES(V)                           \
-  V(async_listener_run_function, v8::Function)                                \
-  V(async_listener_load_function, v8::Function)                               \
-  V(async_listener_unload_function, v8::Function)                             \
+  V(async_hooks_init_function, v8::Function)                                  \
+  V(async_hooks_pre_function, v8::Function)                                   \
+  V(async_hooks_post_function, v8::Function)                                  \
   V(binding_cache_object, v8::Object)                                         \
   V(buffer_constructor_function, v8::Function)                                \
   V(context, v8::Context)                                                     \
   V(domain_array, v8::Array)                                                  \
   V(fs_stats_constructor_function, v8::Function)                              \
-  V(gc_info_callback_function, v8::Function)                                  \
   V(module_load_list_array, v8::Array)                                        \
   V(pipe_constructor_template, v8::FunctionTemplate)                          \
   V(process_object, v8::Object)                                               \
@@ -286,26 +252,25 @@ RB_HEAD(ares_task_list, ares_task_t);
 
 class Environment {
  public:
-  class AsyncListener {
+  class AsyncHooks {
    public:
     inline uint32_t* fields();
     inline int fields_count() const;
-    inline bool has_listener() const;
-    inline uint32_t watched_providers() const;
+    inline bool call_init_hook();
 
    private:
     friend class Environment;  // So we can call the constructor.
-    inline AsyncListener();
+    inline AsyncHooks();
 
     enum Fields {
-      kHasListener,
-      kWatchedProviders,
+      // Set this to not zero if the init hook should be called.
+      kCallInitHook,
       kFieldsCount
     };
 
     uint32_t fields_[kFieldsCount];
 
-    DISALLOW_COPY_AND_ASSIGN(AsyncListener);
+    DISALLOW_COPY_AND_ASSIGN(AsyncHooks);
   };
 
   class DomainFlag {
@@ -369,13 +334,12 @@ class Environment {
         : handle_(handle),
           cb_(cb),
           arg_(arg) {
-      QUEUE_INIT(&handle_cleanup_queue_);
     }
 
     uv_handle_t* handle_;
     HandleCleanupCb cb_;
     void* arg_;
-    QUEUE handle_cleanup_queue_;
+    ListNode<HandleCleanup> handle_cleanup_queue_;
   };
 
   static inline Environment* GetCurrent(v8::Isolate* isolate);
@@ -391,15 +355,11 @@ class Environment {
   inline void CleanupHandles();
   inline void Dispose();
 
-  // Defined in src/node_profiler.cc.
-  void StartGarbageCollectionTracking(v8::Local<v8::Function> callback);
-  void StopGarbageCollectionTracking();
-
   void AssignToContext(v8::Local<v8::Context> context);
 
   inline v8::Isolate* isolate() const;
   inline uv_loop_t* event_loop() const;
-  inline bool has_async_listener() const;
+  inline bool call_async_init_hook() const;
   inline bool in_domain() const;
   inline uint32_t watched_providers() const;
 
@@ -419,7 +379,7 @@ class Environment {
                                     void *arg);
   inline void FinishHandleCleanup(uv_handle_t* handle);
 
-  inline AsyncListener* async_listener();
+  inline AsyncHooks* async_hooks();
   inline DomainFlag* domain_flag();
   inline TickInfo* tick_info();
 
@@ -435,6 +395,9 @@ class Environment {
   inline bool using_domains() const;
   inline void set_using_domains(bool value);
 
+  inline bool using_asyncwrap() const;
+  inline void set_using_asyncwrap(bool value);
+
   inline bool printed_error() const;
   inline void set_printed_error(bool value);
 
@@ -448,7 +411,8 @@ class Environment {
   inline void ThrowUVException(int errorno,
                                const char* syscall = nullptr,
                                const char* message = nullptr,
-                               const char* path = nullptr);
+                               const char* path = nullptr,
+                               const char* dest = nullptr);
 
   // Convenience methods for contextify
   inline static void ThrowError(v8::Isolate* isolate, const char* errmsg);
@@ -489,19 +453,20 @@ class Environment {
     return &debugger_agent_;
   }
 
-  inline QUEUE* handle_wrap_queue() { return &handle_wrap_queue_; }
-  inline QUEUE* req_wrap_queue() { return &req_wrap_queue_; }
+  typedef ListHead<HandleWrap, &HandleWrap::handle_wrap_queue_> HandleWrapQueue;
+  typedef ListHead<ReqWrap<uv_req_t>, &ReqWrap<uv_req_t>::req_wrap_queue_>
+          ReqWrapQueue;
+
+  inline HandleWrapQueue* handle_wrap_queue() { return &handle_wrap_queue_; }
+  inline ReqWrapQueue* req_wrap_queue() { return &req_wrap_queue_; }
 
  private:
   static const int kIsolateSlot = NODE_ISOLATE_SLOT;
 
-  class GCInfo;
   class IsolateData;
   inline Environment(v8::Local<v8::Context> context, uv_loop_t* loop);
   inline ~Environment();
   inline IsolateData* isolate_data() const;
-  void AfterGarbageCollectionCallback(const GCInfo* before,
-                                      const GCInfo* after);
 
   enum ContextEmbedderDataIndex {
     kContextEmbedderDataIndex = NODE_CONTEXT_EMBEDDER_DATA_INDEX
@@ -513,7 +478,7 @@ class Environment {
   uv_idle_t immediate_idle_handle_;
   uv_prepare_t idle_prepare_handle_;
   uv_check_t idle_check_handle_;
-  AsyncListener async_listener_count_;
+  AsyncHooks async_hooks_;
   DomainFlag domain_flag_;
   TickInfo tick_info_;
   uv_timer_t cares_timer_handle_;
@@ -521,13 +486,14 @@ class Environment {
   ares_task_list cares_task_list_;
   bool using_smalloc_alloc_cb_;
   bool using_domains_;
-  QUEUE gc_tracker_queue_;
+  bool using_asyncwrap_;
   bool printed_error_;
   debugger::Agent debugger_agent_;
 
-  QUEUE handle_wrap_queue_;
-  QUEUE req_wrap_queue_;
-  QUEUE handle_cleanup_queue_;
+  HandleWrapQueue handle_wrap_queue_;
+  ReqWrapQueue req_wrap_queue_;
+  ListHead<HandleCleanup,
+           &HandleCleanup::handle_cleanup_queue_> handle_cleanup_queue_;
   int handle_cleanup_waiting_;
 
   v8::Persistent<v8::External> external_;
@@ -537,26 +503,6 @@ class Environment {
   ENVIRONMENT_STRONG_PERSISTENT_PROPERTIES(V)
 #undef V
 
-  class GCInfo {
-   public:
-    inline GCInfo();
-    inline GCInfo(v8::Isolate* isolate,
-                  v8::GCType type,
-                  v8::GCCallbackFlags flags,
-                  uint64_t timestamp);
-    inline v8::GCType type() const;
-    inline v8::GCCallbackFlags flags() const;
-    // TODO(bnoordhuis) Const-ify once https://codereview.chromium.org/63693005
-    // lands and makes it way into a stable release.
-    inline v8::HeapStatistics* stats() const;
-    inline uint64_t timestamp() const;
-   private:
-    v8::GCType type_;
-    v8::GCCallbackFlags flags_;
-    v8::HeapStatistics stats_;
-    uint64_t timestamp_;
-  };
-
   // Per-thread, reference-counted singleton.
   class IsolateData {
    public:
@@ -564,10 +510,6 @@ class Environment {
                                            uv_loop_t* loop);
     inline void Put();
     inline uv_loop_t* event_loop() const;
-
-    // Defined in src/node_profiler.cc.
-    void StartGarbageCollectionTracking(Environment* env);
-    void StopGarbageCollectionTracking(Environment* env);
 
 #define V(PropertyName, StringValue)                                          \
     inline v8::Local<v8::String> PropertyName() const;
@@ -579,16 +521,6 @@ class Environment {
     inline explicit IsolateData(v8::Isolate* isolate, uv_loop_t* loop);
     inline v8::Isolate* isolate() const;
 
-    // Defined in src/node_profiler.cc.
-    static void BeforeGarbageCollection(v8::Isolate* isolate,
-                                        v8::GCType type,
-                                        v8::GCCallbackFlags flags);
-    static void AfterGarbageCollection(v8::Isolate* isolate,
-                                       v8::GCType type,
-                                       v8::GCCallbackFlags flags);
-    void BeforeGarbageCollection(v8::GCType type, v8::GCCallbackFlags flags);
-    void AfterGarbageCollection(v8::GCType type, v8::GCCallbackFlags flags);
-
     uv_loop_t* const event_loop_;
     v8::Isolate* const isolate_;
 
@@ -598,9 +530,6 @@ class Environment {
 #undef V
 
     unsigned int ref_count_;
-    QUEUE gc_tracker_queue_;
-    GCInfo gc_info_before_;
-    GCInfo gc_info_after_;
 
     DISALLOW_COPY_AND_ASSIGN(IsolateData);
   };

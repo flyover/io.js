@@ -1,29 +1,11 @@
-// Copyright Joyent, Inc. and other Node contributors.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the
-// "Software"), to deal in the Software without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Software, and to permit
-// persons to whom the Software is furnished to do so, subject to the
-// following conditions:
-//
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
-// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-// USE OR OTHER DEALINGS IN THE SOFTWARE.
-
 // Hello, and welcome to hacking node.js!
 //
 // This file is invoked by node::Load in src/node.cc, and responsible for
 // bootstrapping the node.js core. Special caution is given to the performance
 // of the startup process, so many dependencies are invoked lazily.
+
+'use strict';
+
 (function(process) {
   this.global = this;
 
@@ -38,9 +20,6 @@
     EventEmitter.call(process);
 
     process.EventEmitter = EventEmitter; // process.EventEmitter is deprecated
-
-    // Setup the tracing module
-    NativeModule.require('tracing')._nodeInitialization(process);
 
     // do this good and early, since it handles errors.
     startup.processFatal();
@@ -85,7 +64,7 @@
 
     } else if (process.argv[1] == '--debug-agent') {
       // Start the debugger agent
-      var d = NativeModule.require('_debugger_agent');
+      var d = NativeModule.require('_debug_agent');
       d.start();
 
     } else if (process._eval != null) {
@@ -229,14 +208,8 @@
   };
 
   startup.processFatal = function() {
-    var tracing = NativeModule.require('tracing');
-    var _errorHandler = tracing._errorHandler;
-    // Cleanup
-    delete tracing._errorHandler;
-
     process._fatalException = function(er) {
-      // First run through error handlers from asyncListener.
-      var caught = _errorHandler(er);
+      var caught;
 
       if (process.domain && process.domain._errorHandler)
         caught = process.domain._errorHandler(er) || caught;
@@ -258,11 +231,7 @@
 
       // if we handled an error, then make sure any ticks get processed
       } else {
-        var t = setImmediate(process._tickCallback);
-        // Complete hack to make sure any errors thrown from async
-        // listeners don't cause an infinite loop.
-        if (t._asyncQueue)
-          t._asyncQueue = [];
+        NativeModule.require('timers').setImmediate(process._tickCallback);
       }
 
       return caught;
@@ -283,10 +252,10 @@
 
     // strip the gyp comment line at the beginning
     config = config.split('\n')
-                   .slice(1)
-                   .join('\n')
-                   .replace(/"/g, '\\"')
-                   .replace(/'/g, '"');
+        .slice(1)
+        .join('\n')
+        .replace(/"/g, '\\"')
+        .replace(/'/g, '"');
 
     process.config = JSON.parse(config, function(key, value) {
       if (value === 'true') return true;
@@ -296,12 +265,7 @@
   };
 
   startup.processNextTick = function() {
-    var tracing = NativeModule.require('tracing');
     var nextTickQueue = [];
-    var asyncFlags = tracing._asyncFlags;
-    var _runAsyncQueue = tracing._runAsyncQueue;
-    var _loadAsyncQueue = tracing._loadAsyncQueue;
-    var _unloadAsyncQueue = tracing._unloadAsyncQueue;
     var microtasksScheduled = false;
 
     // Used to run V8's micro task queue.
@@ -314,10 +278,6 @@
     // *Must* match Environment::TickInfo::Fields in src/env.h.
     var kIndex = 0;
     var kLength = 1;
-
-    // For asyncFlags.
-    // *Must* match Environment::AsyncListeners::Fields in src/env.h
-    var kCount = 0;
 
     process.nextTick = nextTick;
     // Needs to be accessible from beyond this scope.
@@ -365,7 +325,7 @@
     // Run callbacks that have no domain.
     // Using domains will cause this to be overridden.
     function _tickCallback() {
-      var callback, hasQueue, threw, tock;
+      var callback, threw, tock;
 
       scheduleMicrotasks();
 
@@ -373,9 +333,6 @@
         tock = nextTickQueue[tickInfo[kIndex]++];
         callback = tock.callback;
         threw = true;
-        hasQueue = !!tock._asyncQueue;
-        if (hasQueue)
-          _loadAsyncQueue(tock);
         try {
           callback();
           threw = false;
@@ -383,8 +340,6 @@
           if (threw)
             tickDone();
         }
-        if (hasQueue)
-          _unloadAsyncQueue(tock);
         if (1e4 < tickInfo[kIndex])
           tickDone();
       }
@@ -393,7 +348,7 @@
     }
 
     function _tickDomainCallback() {
-      var callback, domain, hasQueue, threw, tock;
+      var callback, domain, threw, tock;
 
       scheduleMicrotasks();
 
@@ -401,9 +356,6 @@
         tock = nextTickQueue[tickInfo[kIndex]++];
         callback = tock.callback;
         domain = tock.domain;
-        hasQueue = !!tock._asyncQueue;
-        if (hasQueue)
-          _loadAsyncQueue(tock);
         if (domain)
           domain.enter();
         threw = true;
@@ -414,8 +366,6 @@
           if (threw)
             tickDone();
         }
-        if (hasQueue)
-          _unloadAsyncQueue(tock);
         if (1e4 < tickInfo[kIndex])
           tickDone();
         if (domain)
@@ -432,12 +382,8 @@
 
       var obj = {
         callback: callback,
-        domain: process.domain || null,
-        _asyncQueue: undefined
+        domain: process.domain || null
       };
-
-      if (asyncFlags[kCount] > 0)
-        _runAsyncQueue(obj);
 
       nextTickQueue.push(obj);
       tickInfo[kLength]++;
@@ -582,11 +528,24 @@
         case 'PIPE':
         case 'TCP':
           var net = NativeModule.require('net');
-          stdin = new net.Socket({
-            fd: fd,
-            readable: true,
-            writable: false
-          });
+
+          // It could be that process has been started with an IPC channel
+          // sitting on fd=0, in such case the pipe for this fd is already
+          // present and creating a new one will lead to the assertion failure
+          // in libuv.
+          if (process._channel && process._channel.fd === fd) {
+            stdin = new net.Socket({
+              handle: process._channel,
+              readable: true,
+              writable: false
+            });
+          } else {
+            stdin = new net.Socket({
+              fd: fd,
+              readable: true,
+              writable: false
+            });
+          }
           break;
 
         default:
@@ -641,8 +600,8 @@
     process.kill = function(pid, sig) {
       var err;
 
-      if (typeof pid !== 'number' || !isFinite(pid)) {
-        throw new TypeError('pid must be a number');
+      if (pid != (pid | 0)) {
+        throw new TypeError('invalid pid');
       }
 
       // preserve null signal
@@ -671,16 +630,14 @@
     // Load events module in order to access prototype elements on process like
     // process.addListener.
     var signalWraps = {};
-    var addListener = process.addListener;
-    var removeListener = process.removeListener;
 
     function isSignal(event) {
       return event.slice(0, 3) === 'SIG' &&
              startup.lazyConstants().hasOwnProperty(event);
     }
 
-    // Wrap addListener for the special signal types
-    process.on = process.addListener = function(type, listener) {
+    // Detect presence of a listener for the special signal types
+    process.on('newListener', function(type, listener) {
       if (isSignal(type) &&
           !signalWraps.hasOwnProperty(type)) {
         var Signal = process.binding('signal_wrap').Signal;
@@ -700,23 +657,15 @@
 
         signalWraps[type] = wrap;
       }
+    });
 
-      return addListener.apply(this, arguments);
-    };
-
-    process.removeListener = function(type, listener) {
-      var ret = removeListener.apply(this, arguments);
-      if (isSignal(type)) {
-        assert(signalWraps.hasOwnProperty(type));
-
-        if (NativeModule.require('events').listenerCount(this, type) === 0) {
-          signalWraps[type].close();
-          delete signalWraps[type];
-        }
+    process.on('removeListener', function(type, listener) {
+      if (signalWraps.hasOwnProperty(type) &&
+          NativeModule.require('events').listenerCount(this, type) === 0) {
+        signalWraps[type].close();
+        delete signalWraps[type];
       }
-
-      return ret;
-    };
+    });
   };
 
 
@@ -814,15 +763,15 @@
 
   NativeModule.getCached = function(id) {
     return NativeModule._cache[id];
-  }
+  };
 
   NativeModule.exists = function(id) {
     return NativeModule._source.hasOwnProperty(id);
-  }
+  };
 
   NativeModule.getSource = function(id) {
     return NativeModule._source[id];
-  }
+  };
 
   NativeModule.wrap = function(script) {
     return NativeModule.wrapper[0] + script + NativeModule.wrapper[1];

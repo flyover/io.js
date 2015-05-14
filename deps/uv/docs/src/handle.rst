@@ -6,7 +6,7 @@
 
 `uv_handle_t` is the base type for all libuv handle types.
 
-Strcutures are aligned so that any libuv handle can be cast to `uv_handle_t`.
+Structures are aligned so that any libuv handle can be cast to `uv_handle_t`.
 All API functions defined here work with any handle type.
 
 
@@ -20,6 +20,15 @@ Data types
 .. c:type:: uv_any_handle
 
     Union of all handle types.
+
+.. c:type:: void (*uv_alloc_cb)(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf)
+
+    Type definition for callback passed to :c:func:`uv_read_start` and
+    :c:func:`uv_udp_recv_start`. The user must fill the supplied :c:type:`uv_buf_t`
+    structure with whatever size, as long as it's > 0. A suggested size (65536 at the moment)
+    is provided, but it doesn't need to be honored. Setting the buffer's length to 0
+    will trigger a ``UV_ENOBUFS`` error in the :c:type:`uv_udp_recv_cb` or
+    :c:type:`uv_read_cb` callback.
 
 .. c:type:: void (*uv_close_cb)(uv_handle_t* handle)
 

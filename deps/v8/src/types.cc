@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <iomanip>
+
 #include "src/types.h"
 
 #include "src/ostreams.h"
@@ -151,9 +153,9 @@ TypeImpl<Config>::BitsetType::Lub(TypeImpl* type) {
   }
   if (type->IsConstant()) return type->AsConstant()->Bound()->AsBitset();
   if (type->IsRange()) return type->AsRange()->BitsetLub();
-  if (type->IsContext()) return kInternal & kTaggedPtr;
+  if (type->IsContext()) return kInternal & kTaggedPointer;
   if (type->IsArray()) return kArray;
-  if (type->IsFunction()) return kFunction;
+  if (type->IsFunction()) return kOtherObject;  // TODO(rossberg): kFunction
   UNREACHABLE();
   return kNone;
 }
@@ -198,10 +200,10 @@ TypeImpl<Config>::BitsetType::Lub(i::Map* map) {
              map == heap->no_interceptor_result_sentinel_map() ||
              map == heap->termination_exception_map() ||
              map == heap->arguments_marker_map());
-      return kInternal & kTaggedPtr;
+      return kInternal & kTaggedPointer;
     }
     case HEAP_NUMBER_TYPE:
-      return kNumber & kTaggedPtr;
+      return kNumber & kTaggedPointer;
     case JS_VALUE_TYPE:
     case JS_DATE_TYPE:
     case JS_OBJECT_TYPE:
@@ -225,9 +227,9 @@ TypeImpl<Config>::BitsetType::Lub(i::Map* map) {
     case JS_ARRAY_TYPE:
       return kArray;
     case JS_FUNCTION_TYPE:
-      return kFunction;
+      return kOtherObject;  // TODO(rossberg): there should be a Function type.
     case JS_REGEXP_TYPE:
-      return kRegExp;
+      return kOtherObject;  // TODO(rossberg): there should be a RegExp type.
     case JS_PROXY_TYPE:
     case JS_FUNCTION_PROXY_TYPE:
       return kProxy;
@@ -247,9 +249,10 @@ TypeImpl<Config>::BitsetType::Lub(i::Map* map) {
     case SHARED_FUNCTION_INFO_TYPE:
     case ACCESSOR_PAIR_TYPE:
     case FIXED_ARRAY_TYPE:
+    case BYTE_ARRAY_TYPE:
     case FOREIGN_TYPE:
     case CODE_TYPE:
-      return kInternal & kTaggedPtr;
+      return kInternal & kTaggedPointer;
     default:
       UNREACHABLE();
       return kNone;
@@ -262,7 +265,8 @@ typename TypeImpl<Config>::bitset
 TypeImpl<Config>::BitsetType::Lub(i::Object* value) {
   DisallowHeapAllocation no_allocation;
   if (value->IsNumber()) {
-    return Lub(value->Number()) & (value->IsSmi() ? kTaggedInt : kTaggedPtr);
+    return Lub(value->Number()) &
+        (value->IsSmi() ? kTaggedSigned : kTaggedPointer);
   }
   return Lub(i::HeapObject::cast(value)->map());
 }
@@ -274,72 +278,47 @@ TypeImpl<Config>::BitsetType::Lub(double value) {
   DisallowHeapAllocation no_allocation;
   if (i::IsMinusZero(value)) return kMinusZero;
   if (std::isnan(value)) return kNaN;
-  if (IsUint32Double(value)) return Lub(FastD2UI(value));
-  if (IsInt32Double(value)) return Lub(FastD2I(value));
-  return kOtherNumber;
-}
-
-
-template<class Config>
-typename TypeImpl<Config>::bitset
-TypeImpl<Config>::BitsetType::Lub(int32_t value) {
-  DisallowHeapAllocation no_allocation;
-  if (value >= 0x40000000) {
-    return i::SmiValuesAre31Bits() ? kOtherUnsigned31 : kUnsignedSmall;
-  }
-  if (value >= 0) return kUnsignedSmall;
-  if (value >= -0x40000000) return kOtherSignedSmall;
-  return i::SmiValuesAre31Bits() ? kOtherSigned32 : kOtherSignedSmall;
-}
-
-
-template<class Config>
-typename TypeImpl<Config>::bitset
-TypeImpl<Config>::BitsetType::Lub(uint32_t value) {
-  DisallowHeapAllocation no_allocation;
-  if (value >= 0x80000000u) return kOtherUnsigned32;
-  if (value >= 0x40000000u) {
-    return i::SmiValuesAre31Bits() ? kOtherUnsigned31 : kUnsignedSmall;
-  }
-  return kUnsignedSmall;
+  if (IsUint32Double(value) || IsInt32Double(value)) return Lub(value, value);
+  return kPlainNumber;
 }
 
 
 // Minimum values of regular numeric bitsets when SmiValuesAre31Bits.
-template<class Config>
+template <class Config>
 const typename TypeImpl<Config>::BitsetType::BitsetMin
-TypeImpl<Config>::BitsetType::BitsetMins31[] = {
-    {kOtherNumber, -V8_INFINITY},
-    {kOtherSigned32, kMinInt},
-    {kOtherSignedSmall, -0x40000000},
-    {kUnsignedSmall, 0},
-    {kOtherUnsigned31, 0x40000000},
-    {kOtherUnsigned32, 0x80000000},
-    {kOtherNumber, static_cast<double>(kMaxUInt32) + 1}
-};
+    TypeImpl<Config>::BitsetType::BitsetMins31[] = {
+        {kOtherNumber, -V8_INFINITY},
+        {kOtherSigned32, kMinInt},
+        {kNegativeSignedSmall, -0x40000000},
+        {kUnsignedSmall, 0},
+        {kOtherUnsigned31, 0x40000000},
+        {kOtherUnsigned32, 0x80000000},
+        {kOtherNumber, static_cast<double>(kMaxUInt32) + 1}};
 
 
 // Minimum values of regular numeric bitsets when SmiValuesAre32Bits.
 // OtherSigned32 and OtherUnsigned31 are empty (see the diagrams in types.h).
-template<class Config>
+template <class Config>
 const typename TypeImpl<Config>::BitsetType::BitsetMin
-TypeImpl<Config>::BitsetType::BitsetMins32[] = {
-    {kOtherNumber, -V8_INFINITY},
-    {kOtherSignedSmall, kMinInt},
-    {kUnsignedSmall, 0},
-    {kOtherUnsigned32, 0x80000000},
-    {kOtherNumber, static_cast<double>(kMaxUInt32) + 1}
-};
+    TypeImpl<Config>::BitsetType::BitsetMins32[] = {
+        {kOtherNumber, -V8_INFINITY},
+        {kNegativeSignedSmall, kMinInt},
+        {kUnsignedSmall, 0},
+        {kOtherUnsigned32, 0x80000000},
+        {kOtherNumber, static_cast<double>(kMaxUInt32) + 1}};
 
 
 template<class Config>
 typename TypeImpl<Config>::bitset
-TypeImpl<Config>::BitsetType::Lub(Limits lim) {
+TypeImpl<Config>::BitsetType::Lub(double min, double max) {
   DisallowHeapAllocation no_allocation;
-  double min = lim.min->Number();
-  double max = lim.max->Number();
   int lub = kNone;
   const BitsetMin* mins = BitsetMins();
+
+  // Make sure the min-max range touches 0, so we are guaranteed no holes
+  // in unions of valid bitsets.
+  if (max < -1) max = -1;
+  if (min > 0) min = 0;
 
   for (size_t i = 1; i < BitsetMinsSize(); ++i) {
     if (min < mins[i].min) {
@@ -372,7 +351,7 @@ double TypeImpl<Config>::BitsetType::Max(bitset bits) {
   DisallowHeapAllocation no_allocation;
   DCHECK(Is(bits, kNumber));
   const BitsetMin* mins = BitsetMins();
-  bool mz = bits & kMinusZero;
+  bool mz = SEMANTIC(bits & kMinusZero);
   if (BitsetType::Is(mins[BitsetMinsSize()-1].bits, bits)) {
     return +V8_INFINITY;
   }
@@ -464,6 +443,7 @@ bool TypeImpl<Config>::SlowIs(TypeImpl* that) {
             Contains(that->AsRange(), *this->AsConstant()->Value()));
   }
   if (this->IsRange()) return false;
+
   return this->SimplyEquals(that);
 }
 
@@ -995,7 +975,7 @@ const char* TypeImpl<Config>::BitsetType::Name(bitset bits) {
 
 
 template <class Config>
-void TypeImpl<Config>::BitsetType::Print(OStream& os,  // NOLINT
+void TypeImpl<Config>::BitsetType::Print(std::ostream& os,  // NOLINT
                                          bitset bits) {
   DisallowHeapAllocation no_allocation;
   const char* name = Name(bits);
@@ -1010,6 +990,7 @@ void TypeImpl<Config>::BitsetType::Print(OStream& os,  // NOLINT
 #undef BITSET_CONSTANT
 
 #define BITSET_CONSTANT(type, value) SEMANTIC(k##type),
+      INTERNAL_BITSET_TYPE_LIST(BITSET_CONSTANT)
       SEMANTIC_BITSET_TYPE_LIST(BITSET_CONSTANT)
 #undef BITSET_CONSTANT
   };
@@ -1031,7 +1012,7 @@ void TypeImpl<Config>::BitsetType::Print(OStream& os,  // NOLINT
 
 
 template <class Config>
-void TypeImpl<Config>::PrintTo(OStream& os, PrintDimension dim) {  // NOLINT
+void TypeImpl<Config>::PrintTo(std::ostream& os, PrintDimension dim) {
   DisallowHeapAllocation no_allocation;
   if (dim != REPRESENTATION_DIM) {
     if (this->IsBitset()) {
@@ -1043,8 +1024,12 @@ void TypeImpl<Config>::PrintTo(OStream& os, PrintDimension dim) {  // NOLINT
     } else if (this->IsConstant()) {
       os << "Constant(" << Brief(*this->AsConstant()->Value()) << ")";
     } else if (this->IsRange()) {
-      os << "Range(" << this->AsRange()->Min()->Number()
-         << ", " << this->AsRange()->Max()->Number() << ")";
+      std::ostream::fmtflags saved_flags = os.setf(std::ios::fixed);
+      std::streamsize saved_precision = os.precision(0);
+      os << "Range(" << this->AsRange()->Min()->Number() << ", "
+         << this->AsRange()->Max()->Number() << ")";
+      os.flags(saved_flags);
+      os.precision(saved_precision);
     } else if (this->IsContext()) {
       os << "Context(";
       this->AsContext()->Outer()->PrintTo(os, dim);
@@ -1089,13 +1074,13 @@ template <class Config>
 void TypeImpl<Config>::Print() {
   OFStream os(stdout);
   PrintTo(os);
-  os << endl;
+  os << std::endl;
 }
 template <class Config>
 void TypeImpl<Config>::BitsetType::Print(bitset bits) {
   OFStream os(stdout);
   Print(os, bits);
-  os << endl;
+  os << std::endl;
 }
 #endif
 

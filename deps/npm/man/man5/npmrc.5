@@ -1,4 +1,4 @@
-.TH "NPMRC" "5" "September 2014" "" ""
+.TH "NPMRC" "5" "February 2015" "" ""
 .SH "NAME"
 \fBnpmrc\fR \- The npm config files
 .SH DESCRIPTION
@@ -30,14 +30,24 @@ parameters\.  Environment variables can be replaced using
 \fB${VARIABLE_NAME}\fR\|\. For example:
 .P
 .RS 2
-.EX
+.nf
 prefix = ${HOME}/\.npm\-packages
-.EE
+.fi
 .RE
 .P
 Each of these files is loaded, and config options are resolved in
 priority order\.  For example, a setting in the userconfig file would
 override the setting in the globalconfig file\.
+.P
+Array values are specified by adding "[]" after the key name\. For
+example:
+.P
+.RS 2
+.nf
+key[] = "first value"
+key[] = "second value"
+.fi
+.RE
 .SS Per\-project config file
 .P
 When working locally in a project, a \fB\|\.npmrc\fR file in the root of the

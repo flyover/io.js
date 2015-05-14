@@ -2,10 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef V8_RUNTIME_H_
-#define V8_RUNTIME_H_
+#ifndef V8_RUNTIME_RUNTIME_H_
+#define V8_RUNTIME_RUNTIME_H_
 
 #include "src/allocation.h"
+#include "src/objects.h"
 #include "src/zone.h"
 
 namespace v8 {
@@ -44,7 +45,6 @@ namespace internal {
   F(IsSloppyModeFunction, 1, 1)                            \
   F(GetDefaultReceiver, 1, 1)                              \
                                                            \
-  F(GetPrototype, 1, 1)                                    \
   F(SetPrototype, 2, 1)                                    \
   F(InternalSetPrototype, 2, 1)                            \
   F(IsInPrototypeChain, 2, 1)                              \
@@ -79,8 +79,10 @@ namespace internal {
   F(DebugPushPromise, 1, 1)                                \
   F(DebugPopPromise, 0, 1)                                 \
   F(DebugPromiseEvent, 1, 1)                               \
-  F(DebugPromiseRejectEvent, 2, 1)                         \
   F(DebugAsyncTaskEvent, 1, 1)                             \
+  F(PromiseRejectEvent, 3, 1)                              \
+  F(PromiseRevokeReject, 1, 1)                             \
+  F(PromiseHasHandlerSymbol, 0, 1)                         \
   F(FlattenString, 1, 1)                                   \
   F(LoadMutableDouble, 2, 1)                               \
   F(TryMigrateInstance, 1, 1)                              \
@@ -152,9 +154,8 @@ namespace internal {
   F(RemPiO2, 1, 1)                                         \
                                                            \
   /* Regular expressions */                                \
-  F(RegExpCompile, 3, 1)                                   \
+  F(RegExpInitializeAndCompile, 3, 1)                      \
   F(RegExpExecMultiple, 4, 1)                              \
-  F(RegExpInitializeObject, 6, 1)                          \
                                                            \
   /* JSON */                                               \
   F(ParseJson, 1, 1)                                       \
@@ -184,11 +185,20 @@ namespace internal {
   /* Classes support */                                    \
   F(ToMethod, 2, 1)                                        \
   F(HomeObjectSymbol, 0, 1)                                \
+  F(DefineClass, 6, 1)                                     \
+  F(DefineClassMethod, 3, 1)                               \
+  F(DefineClassGetter, 3, 1)                               \
+  F(DefineClassSetter, 3, 1)                               \
+  F(ClassGetSourceCode, 1, 1)                              \
   F(ThrowNonMethodError, 0, 1)                             \
   F(ThrowUnsupportedSuperError, 0, 1)                      \
   F(LoadFromSuper, 3, 1)                                   \
+  F(LoadKeyedFromSuper, 3, 1)                              \
   F(StoreToSuper_Strict, 4, 1)                             \
-  F(StoreToSuper_Sloppy, 4, 1)
+  F(StoreToSuper_Sloppy, 4, 1)                             \
+  F(StoreKeyedToSuper_Strict, 4, 1)                        \
+  F(StoreKeyedToSuper_Sloppy, 4, 1)                        \
+  F(DefaultConstructorSuperCall, 0, 1)
 
 
 #define RUNTIME_FUNCTION_LIST_ALWAYS_2(F)              \
@@ -239,11 +249,10 @@ namespace internal {
   F(DateCacheVersion, 0, 1)                            \
                                                        \
   /* Globals */                                        \
-  F(CompileString, 2, 1)                               \
+  F(CompileString, 3, 1)                               \
                                                        \
   /* Eval */                                           \
   F(GlobalProxy, 1, 1)                                 \
-  F(IsAttachedGlobal, 1, 1)                            \
                                                        \
   F(AddNamedProperty, 4, 1)                            \
   F(AddPropertyForTemplate, 4, 1)                      \
@@ -253,7 +262,6 @@ namespace internal {
   F(DefineDataPropertyUnchecked, 4, 1)                 \
   F(DefineAccessorPropertyUnchecked, 5, 1)             \
   F(GetDataProperty, 2, 1)                             \
-  F(SetHiddenProperty, 3, 1)                           \
                                                        \
   /* Arrays */                                         \
   F(RemoveArrayHoles, 2, 1)                            \
@@ -261,11 +269,13 @@ namespace internal {
   F(MoveArrayContents, 2, 1)                           \
   F(EstimateNumberOfElements, 1, 1)                    \
   F(NormalizeElements, 1, 1)                           \
+  F(HasComplexElements, 1, 1)                          \
                                                        \
   /* Getters and Setters */                            \
   F(LookupAccessor, 3, 1)                              \
                                                        \
   /* ES5 */                                            \
+  F(ObjectSeal, 1, 1)                                  \
   F(ObjectFreeze, 1, 1)                                \
                                                        \
   /* Harmony modules */                                \
@@ -284,35 +294,21 @@ namespace internal {
   /* Harmony proxies */                                \
   F(CreateJSProxy, 2, 1)                               \
   F(CreateJSFunctionProxy, 4, 1)                       \
-  F(IsJSProxy, 1, 1)                                   \
   F(IsJSFunctionProxy, 1, 1)                           \
   F(GetHandler, 1, 1)                                  \
   F(GetCallTrap, 1, 1)                                 \
   F(GetConstructTrap, 1, 1)                            \
   F(Fix, 1, 1)                                         \
                                                        \
-  /* Harmony sets */                                   \
-  F(SetInitialize, 1, 1)                               \
-  F(SetAdd, 2, 1)                                      \
-  F(SetHas, 2, 1)                                      \
-  F(SetDelete, 2, 1)                                   \
-  F(SetClear, 1, 1)                                    \
-  F(SetGetSize, 1, 1)                                  \
-                                                       \
+  /* ES6 collection iterators */                       \
   F(SetIteratorInitialize, 3, 1)                       \
+  F(SetIteratorClone, 1, 1)                            \
   F(SetIteratorNext, 2, 1)                             \
-                                                       \
-  /* Harmony maps */                                   \
-  F(MapInitialize, 1, 1)                               \
-  F(MapGet, 2, 1)                                      \
-  F(MapHas, 2, 1)                                      \
-  F(MapDelete, 2, 1)                                   \
-  F(MapClear, 1, 1)                                    \
-  F(MapSet, 3, 1)                                      \
-  F(MapGetSize, 1, 1)                                  \
-                                                       \
+  F(SetIteratorDetails, 1, 1)                          \
   F(MapIteratorInitialize, 3, 1)                       \
+  F(MapIteratorClone, 1, 1)                            \
   F(MapIteratorNext, 2, 1)                             \
+  F(MapIteratorDetails, 1, 1)                          \
                                                        \
   /* Harmony weak maps and sets */                     \
   F(WeakCollectionInitialize, 1, 1)                    \
@@ -321,8 +317,8 @@ namespace internal {
   F(WeakCollectionDelete, 2, 1)                        \
   F(WeakCollectionSet, 3, 1)                           \
                                                        \
-  F(GetWeakMapEntries, 1, 1)                           \
-  F(GetWeakSetValues, 1, 1)                            \
+  F(GetWeakMapEntries, 2, 1)                           \
+  F(GetWeakSetValues, 2, 1)                            \
                                                        \
   /* Harmony events */                                 \
   F(EnqueueMicrotask, 1, 1)                            \
@@ -338,6 +334,7 @@ namespace internal {
   F(GetObjectContextObjectObserve, 1, 1)               \
   F(GetObjectContextObjectGetNotifier, 1, 1)           \
   F(GetObjectContextNotifierPerformChange, 1, 1)       \
+  F(DeliverObservationChangeRecords, 2, 1)             \
                                                        \
   /* Harmony typed arrays */                           \
   F(ArrayBufferInitialize, 2, 1)                       \
@@ -345,6 +342,7 @@ namespace internal {
   F(ArrayBufferIsView, 1, 1)                           \
   F(ArrayBufferNeuter, 1, 1)                           \
                                                        \
+  F(IsTypedArray, 1, 1)                                \
   F(TypedArrayInitializeFromArrayLike, 4, 1)           \
   F(TypedArrayGetBuffer, 1, 1)                         \
   F(TypedArraySetFastCases, 3, 1)                      \
@@ -383,6 +381,7 @@ namespace internal {
   F(TraceExit, 1, 1)                                   \
   F(Abort, 1, 1)                                       \
   F(AbortJS, 1, 1)                                     \
+  F(NativeScriptsCount, 0, 1)                          \
   /* ES5 */                                            \
   F(OwnKeys, 1, 1)                                     \
                                                        \
@@ -461,7 +460,7 @@ namespace internal {
   F(CreateJSGeneratorObject, 0, 1)                           \
   F(SuspendJSGeneratorObject, 1, 1)                          \
   F(ResumeJSGeneratorObject, 3, 1)                           \
-  F(ThrowGeneratorStateError, 1, 1)                          \
+  F(GeneratorClose, 1, 1)                                    \
                                                              \
   /* Arrays */                                               \
   F(ArrayConstructor, -1, 1)                                 \
@@ -483,12 +482,13 @@ namespace internal {
   F(ReThrow, 1, 1)                                           \
   F(ThrowReferenceError, 1, 1)                               \
   F(ThrowNotDateError, 0, 1)                                 \
+  F(ThrowConstAssignError, 0, 1)                             \
   F(StackGuard, 0, 1)                                        \
   F(Interrupt, 0, 1)                                         \
   F(PromoteScheduledException, 0, 1)                         \
                                                              \
   /* Contexts */                                             \
-  F(NewGlobalContext, 2, 1)                                  \
+  F(NewScriptContext, 2, 1)                                  \
   F(NewFunctionContext, 1, 1)                                \
   F(PushWithContext, 2, 1)                                   \
   F(PushCatchContext, 3, 1)                                  \
@@ -512,7 +512,7 @@ namespace internal {
 #define RUNTIME_FUNCTION_LIST_RETURN_PAIR(F)              \
   F(LoadLookupSlot, 2, 2)                                 \
   F(LoadLookupSlotNoReferenceError, 2, 2)                 \
-  F(ResolvePossiblyDirectEval, 5, 2)                      \
+  F(ResolvePossiblyDirectEval, 6, 2)                      \
   F(ForInInit, 2, 2) /* TODO(turbofan): Only temporary */ \
   F(ForInNext, 4, 2) /* TODO(turbofan): Only temporary */
 
@@ -625,14 +625,6 @@ namespace internal {
 #endif
 
 
-#ifdef DEBUG
-#define RUNTIME_FUNCTION_LIST_DEBUG(F) \
-  /* Testing */                        \
-  F(ListNatives, 0, 1)
-#else
-#define RUNTIME_FUNCTION_LIST_DEBUG(F)
-#endif
-
 // ----------------------------------------------------------------------------
 // RUNTIME_FUNCTION_LIST defines all runtime functions accessed
 // either directly by id (via the code generator), or indirectly
@@ -643,7 +635,6 @@ namespace internal {
   RUNTIME_FUNCTION_LIST_ALWAYS_1(F)            \
   RUNTIME_FUNCTION_LIST_ALWAYS_2(F)            \
   RUNTIME_FUNCTION_LIST_ALWAYS_3(F)            \
-  RUNTIME_FUNCTION_LIST_DEBUG(F)               \
   RUNTIME_FUNCTION_LIST_DEBUGGER(F)            \
   RUNTIME_FUNCTION_LIST_I18N_SUPPORT(F)
 
@@ -661,6 +652,7 @@ namespace internal {
   F(IsNonNegativeSmi, 1, 1)                                 \
   F(IsArray, 1, 1)                                          \
   F(IsRegExp, 1, 1)                                         \
+  F(IsJSProxy, 1, 1)                                        \
   F(IsConstructCall, 0, 1)                                  \
   F(CallFunction, -1 /* receiver + n args + function */, 1) \
   F(ArgumentsLength, 0, 1)                                  \
@@ -721,7 +713,24 @@ namespace internal {
   F(DoubleHi, 1, 1)                       \
   F(DoubleLo, 1, 1)                       \
   F(MathSqrtRT, 1, 1)                     \
-  F(MathLogRT, 1, 1)
+  F(MathLogRT, 1, 1)                      \
+  /* ES6 Collections */                   \
+  F(MapClear, 1, 1)                       \
+  F(MapDelete, 2, 1)                      \
+  F(MapGet, 2, 1)                         \
+  F(MapGetSize, 1, 1)                     \
+  F(MapHas, 2, 1)                         \
+  F(MapInitialize, 1, 1)                  \
+  F(MapSet, 3, 1)                         \
+  F(SetAdd, 2, 1)                         \
+  F(SetClear, 1, 1)                       \
+  F(SetDelete, 2, 1)                      \
+  F(SetGetSize, 1, 1)                     \
+  F(SetHas, 2, 1)                         \
+  F(SetInitialize, 1, 1)                  \
+  /* Arrays */                            \
+  F(HasFastPackedElements, 1, 1)          \
+  F(GetPrototype, 1, 1)
 
 
 //---------------------------------------------------------------------------
@@ -729,44 +738,26 @@ namespace internal {
 
 class RuntimeState {
  public:
-  StaticResource<ConsStringIteratorOp>* string_iterator() {
-    return &string_iterator_;
-  }
   unibrow::Mapping<unibrow::ToUppercase, 128>* to_upper_mapping() {
     return &to_upper_mapping_;
   }
   unibrow::Mapping<unibrow::ToLowercase, 128>* to_lower_mapping() {
     return &to_lower_mapping_;
   }
-  ConsStringIteratorOp* string_iterator_compare_x() {
-    return &string_iterator_compare_x_;
-  }
-  ConsStringIteratorOp* string_iterator_compare_y() {
-    return &string_iterator_compare_y_;
-  }
-  ConsStringIteratorOp* string_locale_compare_it1() {
-    return &string_locale_compare_it1_;
-  }
-  ConsStringIteratorOp* string_locale_compare_it2() {
-    return &string_locale_compare_it2_;
-  }
 
  private:
   RuntimeState() {}
-  // Non-reentrant string buffer for efficient general use in the runtime.
-  StaticResource<ConsStringIteratorOp> string_iterator_;
   unibrow::Mapping<unibrow::ToUppercase, 128> to_upper_mapping_;
   unibrow::Mapping<unibrow::ToLowercase, 128> to_lower_mapping_;
-  ConsStringIteratorOp string_iterator_compare_x_;
-  ConsStringIteratorOp string_iterator_compare_y_;
-  ConsStringIteratorOp string_locale_compare_it1_;
-  ConsStringIteratorOp string_locale_compare_it2_;
 
   friend class Isolate;
   friend class Runtime;
 
   DISALLOW_COPY_AND_ASSIGN(RuntimeState);
 };
+
+
+class JavaScriptFrameIterator;  // Forward declaration.
 
 
 class Runtime : public AllStatic {
@@ -820,10 +811,6 @@ class Runtime : public AllStatic {
   // Get the intrinsic function with the given function entry address.
   static const Function* FunctionForEntry(Address ref);
 
-  // General-purpose helper functions for runtime system.
-  static int StringMatch(Isolate* isolate, Handle<String> sub,
-                         Handle<String> pat, int index);
-
   // TODO(1240886): Some of the following methods are *not* handle safe, but
   // accept handle arguments. This seems fragile.
 
@@ -840,15 +827,14 @@ class Runtime : public AllStatic {
       Handle<JSObject> object, Handle<Object> key, Handle<Object> value,
       PropertyAttributes attr);
 
-  MUST_USE_RESULT static MaybeHandle<Object> DeleteObjectProperty(
-      Isolate* isolate, Handle<JSReceiver> object, Handle<Object> key,
-      JSReceiver::DeleteMode mode);
-
-  MUST_USE_RESULT static MaybeHandle<Object> HasObjectProperty(
-      Isolate* isolate, Handle<JSReceiver> object, Handle<Object> key);
-
   MUST_USE_RESULT static MaybeHandle<Object> GetObjectProperty(
       Isolate* isolate, Handle<Object> object, Handle<Object> key);
+
+  MUST_USE_RESULT static MaybeHandle<Object> GetPrototype(
+      Isolate* isolate, Handle<Object> object);
+
+  MUST_USE_RESULT static MaybeHandle<Name> ToName(Isolate* isolate,
+                                                  Handle<Object> key);
 
   static void SetupArrayBuffer(Isolate* isolate,
                                Handle<JSArrayBuffer> array_buffer,
@@ -864,6 +850,8 @@ class Runtime : public AllStatic {
 
   static void FreeArrayBuffer(Isolate* isolate,
                               JSArrayBuffer* phantom_array_buffer);
+
+  static int FindIndexedNonNativeFrame(JavaScriptFrameIterator* it, int index);
 
   enum TypedArrayId {
     // arrayIds below should be synchromized with typedarray.js natives.
@@ -892,6 +880,8 @@ class Runtime : public AllStatic {
 };
 
 
+std::ostream& operator<<(std::ostream&, Runtime::FunctionId);
+
 //---------------------------------------------------------------------------
 // Constants used by interface to runtime functions.
 
@@ -901,7 +891,8 @@ class AllocateTargetSpace : public BitField<AllocationSpace, 1, 3> {};
 class DeclareGlobalsEvalFlag : public BitField<bool, 0, 1> {};
 class DeclareGlobalsNativeFlag : public BitField<bool, 1, 1> {};
 class DeclareGlobalsStrictMode : public BitField<StrictMode, 2, 1> {};
-}
-}  // namespace v8::internal
 
-#endif  // V8_RUNTIME_H_
+}  // namespace internal
+}  // namespace v8
+
+#endif  // V8_RUNTIME_RUNTIME_H_

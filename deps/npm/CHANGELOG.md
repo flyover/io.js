@@ -1,3 +1,869 @@
+### v2.5.1 (2015-02-06):
+
+This release doesn't look like much, but considerable effort went into ensuring
+that npm's tests will pass on io.js 1.1.0 and Node 0.11.16 / 0.12.0 on both OS
+X and Linux.
+
+**NOTE:** there are no actual changes to npm's code in `npm@2.5.1`. Only test
+code (and the upgrade of `request` to the latest version) has changed.
+
+#### `npm-registry-mock@1.0.0`:
+
+* [`0e8d473`](https://github.com/npm/npm/commit/0e8d4736a1cbdda41ae8eba8a02c7ff7ce80c2ff)
+  [#7281](https://github.com/npm/npm/issues/7281) `npm-registry-mock@1.0.0`:
+  Clean up API, set `connection: close`.
+  ([@robertkowalski](https://github.com/robertkowalski))
+* [`4707bba`](https://github.com/npm/npm/commit/4707bba7d44dfab85cc45c2ecafa9c1601ba2e9a)
+  Further update tests to work with `npm-registry-mock@1.0.0`.
+  ([@othiym23](https://github.com/othiym23))
+* [`41a0f89`](https://github.com/npm/npm/commit/41a0f8959d4e02af9661588afa7d2b4543cc21b6)
+  Got rid of completely gratuitous global config manipulation in tests.
+  ([@othiym23](https://github.com/othiym23))
+
+#### MINOR DEPENDENCY TWEAK
+
+* [`a4c7af9`](https://github.com/npm/npm/commit/a4c7af9c692f250c0fd017397ed9514fc263b752)
+  `request@2.53.0`: Tweaks to tunneling proxy behavior.
+  ([@nylen](https://github.com/nylen))
+
+### v2.5.0 (2015-01-29):
+
+#### SMALL FEATURE I HAVE ALREADY USED TO MAINTAIN NPM ITSELF
+
+* [`9d61e96`](https://github.com/npm/npm/commit/9d61e96fb1f48687a85c211e4e0cd44c7f95a38e)
+  `npm outdated --long` now includes a column showing the type of dependency.
+  ([@watilde](https://github.com/watilde))
+
+#### BUG FIXES & TWEAKS
+
+* [`fec4c96`](https://github.com/npm/npm/commit/fec4c967ee235030bf31393e8605e9e2811f4a39)
+  Allow `--no-proxy` to override `HTTP_PROXY` setting in environment.
+  ([@othiym23](https://github.com/othiym23))
+* [`589acb9`](https://github.com/npm/npm/commit/589acb9714f395c2ad0d98cb0ac4236f1842d2cc)
+  Only set `access` when publshing when it's explicitly set.
+  ([@othiym23](https://github.com/othiym23))
+* [`1027087`](https://github.com/npm/npm/commit/102708704c8c4f0ea99775d38f8d1efecf584940)
+  Add script and `Makefile` stanza to update AUTHORS.
+  ([@KenanY](https://github.com/KenanY))
+* [`eeff04d`](https://github.com/npm/npm/commit/eeff04da7979a0181becd36b8777d607e7aa1787)
+  Add `NPMOPTS` to top-level install in `Makefile` to override `userconfig`.
+  ([@aredridel](https://github.com/aredridel))
+* [`0d17328`](https://github.com/npm/npm/commit/0d173287336650606d4c91818bb7bcfb0c5d57a1)
+  `fstream@1.0.4`: Run chown only when necessary.
+  ([@silkentrance](https://github.com/silkentrance))
+* [`9aa4622`](https://github.com/npm/npm/commit/9aa46226ee63b9e183fd49fc72d9bdb0fae9605e)
+  `columnify@1.4.1`: ES6ified! ([@timoxley](https://github.com/timoxley))
+* [`51b2fd1`](https://github.com/npm/npm/commit/51b2fd1974e38b825ac5ca4a852ab3c4142624cc)
+  Update default version in `docs/npm-config.md`.
+  ([@lucthev](https://github.com/lucthev))
+
+#### `npm-registry-client@6.0.7`:
+
+* [`f9313a0`](https://github.com/npm/npm/commit/f9313a066c9889a0ee898d8a35676e40b8101e7f)
+  [#7226](https://github.com/npm/npm/issues/7226) Ensure that all request
+  settings are copied onto the agent.
+  ([@othiym23](https://github.com/othiym23))
+* [`e186f6e`](https://github.com/npm/npm/commit/e186f6e7cfeb4db9c94d7375638f0b2f0d472947)
+  Only set `access` on publish when it differs from the norm.
+  ([@othiym23](https://github.com/othiym23))
+* [`f9313a0`](https://github.com/npm/npm/commit/f9313a066c9889a0ee898d8a35676e40b8101e7f)
+  Allow overriding request's environment-based proxy handling.
+  ([@othiym23](https://github.com/othiym23))
+* [`f9313a0`](https://github.com/npm/npm/commit/f9313a066c9889a0ee898d8a35676e40b8101e7f)
+  Properly handle retry failures on fetch.
+  ([@othiym23](https://github.com/othiym23))
+
+### v2.4.1 (2015-01-23):
+
+![bridge that doesn't meet in the middle](http://www.static-18.themodernnomad.com/wp-content/uploads/2011/08/bridge-fail.jpg)
+
+Let's accentuate the positive: the `dist-tag` endpoints for `npm dist-tag
+{add,rm,ls}` are now live on the public npm registry.
+
+* [`f70272b`](https://github.com/npm/npm/commit/f70272bed7d77032d1e21553371dd5662fef32f2)
+  `npm-registry-client@6.0.3`: Properly escape JSON tag version strings and
+  filter `_etag` from CouchDB docs. ([@othiym23](https://github.com/othiym23))
+
+### v2.4.0 (2015-01-22):
+
+#### REGISTRY 2: ACCESS AND DIST-TAGS
+
+NOTE: This week's registry-2 commands are leading the implementation on
+registry.npmjs.org a little bit, so some of the following may not work for
+another week or so. Also note that `npm access` has documentation and
+subcommands that are not yet finished, because they depend on incompletely
+specified registry API endpoints. Things are coming together very quickly,
+though, so expect the missing pieces to be filled in the coming weeks.
+
+* [`c963eb2`](https://github.com/npm/npm/commit/c963eb295cf766921b1680f4a71fd0ed3e1bcad8)
+  [#7181](https://github.com/npm/npm/issues/7181) NEW `npm access public` and
+  `npm access restricted`: Toggle visibility of scoped packages.
+  ([@othiym23](https://github.com/othiym23))
+* [`dc51810`](https://github.com/npm/npm/commit/dc51810e08c0f104259146c9c035d255de4f7d1d)
+  [#6243](https://github.com/npm/npm/issues/6243) /
+  [#6854](https://github.com/npm/npm/issues/6854) NEW `npm dist-tags`: Directly
+  manage `dist-tags` on packages. Most notably, `dist-tags` can now be deleted.
+  ([@othiym23](https://github.com/othiym23))
+* [`4c7c132`](https://github.com/npm/npm/commit/4c7c132a6b8305dca2974943226c39c0cdc64ff9)
+  [#7181](https://github.com/npm/npm/issues/7181) /
+  [#6854](https://github.com/npm/npm/issues/6854) `npm-registry-client@6.0.1`:
+  Add new `access` and `dist-tags` endpoints
+  ([@othiym23](https://github.com/othiym23))
+
+#### NOT EXACTLY SELF-DEPRECATING
+
+* [`10d5c77`](https://github.com/npm/npm/commit/10d5c77653487f15759ac7de262a97e9c655240c)
+  [#6274](https://github.com/npm/npm/issues/6274) Deprecate `npm tag` in favor
+  of `npm dist-tag`. ([@othiym23](https://github.com/othiym23))
+
+#### BUG FIX AND TINY FEATURE
+
+* [`29a6ef3`](https://github.com/npm/npm/commit/29a6ef38ef86ac318c5d9ea4bee28ce614672fa6)
+  [#6850](https://github.com/npm/npm/issues/6850) Be smarter about determining
+  base of file deletion when unbuilding. ([@phated](https://github.com/phated))
+* [`4ad01ea`](https://github.com/npm/npm/commit/4ad01ea2930a7a1cf88be121cc5ce9eba40c6807)
+  `init-package-json@1.2.0`: Support `--save-exact` in `npm init`.
+  ([@gustavnikolaj](https://github.com/gustavnikolaj))
+
+### v2.3.0 (2015-01-15):
+
+#### REGISTRY 2: OH MY STARS! WHO AM I?
+
+* [`e662a60`](https://github.com/npm/npm/commit/e662a60e2f9a542effd8e72279d4622fe514415e)
+  The new `whoami` endpoint might not return a value.
+  ([@othiym23](https://github.com/othiym23))
+* [`c2cccd4`](https://github.com/npm/npm/commit/c2cccd4bbc65885239ed646eb510155f7b8af13d)
+  `npm-registry-client@5.0.0`: Includes the following fine changes
+  ([@othiym23](https://github.com/othiym23)):
+  * [`ba6b73e`](https://github.com/npm/npm-registry-client/commit/ba6b73e351027246c228622014e4441412409bad)
+    [#92](https://github.com/npm/npm-registry-client/issues/92) BREAKING CHANGE:
+    Move `/whoami` endpoint out of the package namespace (to `/-/whoami`).
+    ([@othiym23](https://github.com/othiym23))
+  * [`3b174b7`](https://github.com/npm/npm-registry-client/commit/3b174b75c0c9ea77e298e6bb664fb499824ecc7c)
+    [#93](https://github.com/npm/npm-registry-client/issues/93) Registries based
+    on token-based auth can now offer starring.
+    ([@bcoe](https://github.com/bcoe))
+  * [`4701a29`](https://github.com/npm/npm-registry-client/commit/4701a29bcda41bc14aa91f361dd0d576e24677d7)
+    Fix HTTP[S] connection keep-alive on Node 0.11 / io.js 1.0.
+    ([@fengmk2](https://github.com/fengmk2))
+
+#### BETTER REGISTRY METADATA CACHING
+
+* [`98e1e10`](https://github.com/npm/npm/commit/98e1e1080df1f2cab16ed68035603950ea3d2d48)
+  [#6791](https://github.com/npm/npm/issues/6791) Add caching based on
+  Last-Modified / If-Modified-Since headers. Includes this
+  `npm-registry-client@5.0.0` change ([@lxe](https://github.com/lxe)):
+  * [`07bc335`](https://github.com/npm/npm-registry-client/commit/07bc33502b93554cd7539bfcce37d6e2d5404cd0)
+    [#86](https://github.com/npm/npm-registry-client/issues/86) Add Last-Modified
+    / If-Modified-Since cache header handling. ([@lxe](https://github.com/lxe))
+
+#### HOW MUCH IS THAT WINDOWS IN THE DOGGY?
+
+* [`706d49a`](https://github.com/npm/npm/commit/706d49ab45521360fce1a68779b8de899015d8c2)
+  [#7107](https://github.com/npm/npm/issues/7107) `getCacheStat` passes a stub
+  stat on Windows. ([@rmg](https://github.com/rmg))
+* [`5fce278`](https://github.com/npm/npm/commit/5fce278a688a1cb79183e012bde40b089c2e97a4)
+  [#5267](https://github.com/npm/npm/issues/5267) Use `%COMSPEC%` when set on
+  Windows. ([@edmorley](https://github.com/edmorley))
+* [`cc2e099`](https://github.com/npm/npm/commit/cc2e09912ce2f91567c485422e4e797c4deb9842)
+  [#7083](https://github.com/npm/npm/issues/7083) Ensure Git cache prefix
+  exists before repo clone on Windows.
+  ([@othiym23](https://github.com/othiym23))
+
+#### THRILLING BUG FIXES
+
+* [`c6fb430`](https://github.com/npm/npm/commit/c6fb430e55672b3caf87d25cbd2aeeebc449e2f2)
+  [#4197](https://github.com/npm/npm/issues/4197) Report `umask` as a 0-padded
+  octal literal. ([@smikes](https://github.com/smikes))
+* [`209713e`](https://github.com/npm/npm/commit/209713ebd4b77da11ce27d90c3346f78d760ba52)
+  [#4197](https://github.com/npm/npm/issues/4197) `umask@1.1.0`: Properly
+  handle `umask`s (i.e. not decimal numbers).
+  ([@smikes](https://github.com/smikes))
+* [`9eac0a1`](https://github.com/npm/npm/commit/9eac0a14488c5979ebde4c17881c8cd74f395069)
+  Make the example for bin links non-destructive.
+  ([@KevinSheedy](https://github.com/KevinSheedy))
+* [`6338bcf`](https://github.com/npm/npm/commit/6338bcfcd9cd1b0cc48b051dae764dc436ab5332)
+  `glob@4.3.5`: " -> ', for some reason. ([@isaacs](https://github.com/isaacs))
+
+### v2.2.0 (2015-01-08):
+
+* [`88c531d`](https://github.com/npm/npm/commit/88c531d1c0b3aced8f2a09632db01b5635e7226a)
+  [#7056](https://github.com/npm/npm/issues/7056) version doesn't need a
+  package.json. ([@othiym23](https://github.com/othiym23))
+* [`2656c19`](https://github.com/npm/npm/commit/2656c19f6b915c3173acc3b6f184cc321563da5f)
+  [#7095](https://github.com/npm/npm/issues/7095) Link to npm website instead
+  of registry. ([@konklone](https://github.com/konklone))
+* [`c76b801`](https://github.com/npm/npm/commit/c76b8013bf1758587565822626171b76cb465c9e)
+  [#7067](https://github.com/npm/npm/issues/7067) Obfuscate secrets, including
+  nerfed URLs. ([@smikes](https://github.com/smikes))
+* [`17f66ce`](https://github.com/npm/npm/commit/17f66ceb1bd421084e4ae82a6b66634a6e272929)
+  [#6849](https://github.com/npm/npm/issues/6849) Explain the tag workflow more
+  clearly. ([@smikes](https://github.com/smikes))
+* [`e309df6`](https://github.com/npm/npm/commit/e309df642de33d10d6dffadaa8a5d214a924d0dc)
+  [#7096](https://github.com/npm/npm/issues/7096) Really, `npm update -g` is
+  almost always a terrible idea. ([@smikes](https://github.com/smikes))
+* [`acf287d`](https://github.com/npm/npm/commit/acf287d2547c8a0a8871652c164019261b666d55)
+  [#6999](https://github.com/npm/npm/issues/6999) `npm run-script env`: add a
+  new default script that will print out environment values.
+  ([@gcb](https://github.com/gcb))
+* [`560c009`](https://github.com/npm/npm/commit/560c00945d4dec926cd29193e336f137c7f3f951)
+  [#6745](https://github.com/npm/npm/issues/6745) Document `npm update --dev`.
+  ([@smikes](https://github.com/smikes))
+* [`226a677`](https://github.com/npm/npm/commit/226a6776a1a9e28570485623b8adc2ec4b041335)
+  [#7046](https://github.com/npm/npm/issues/7046) We have never been the Node
+  package manager. ([@linclark](https://github.com/linclark))
+* [`38eef22`](https://github.com/npm/npm/commit/38eef2248f03bb8ab04cae1833e2a228fb887f3c)
+  `npm-install-checks@1.0.5`: Compatibility with npmlog@^1.
+  ([@iarna](https://github.com/iarna))
+
+### v2.1.18 (2015-01-01):
+
+* [`bf8640b`](https://github.com/npm/npm/commit/bf8640b0395b5dff71260a0cede7efc699a7bcf5)
+  [#7044](https://github.com/npm/npm/issues/7044) Document `.npmignore` syntax.
+  ([@zeke](https://github.com/zeke))
+
+### v2.1.17 (2014-12-25):
+
+merry npm xmas
+
+Working with [@phated](https://github.com/phated), I discovered that npm still
+had some lingering race conditions around how it handles Git dependencies. The
+following changes were intended to remedy to these issues. Thanks to
+[@phated](https://github.com/phated) for all his help getting to the bottom of
+these.
+
+* [`bdf1c84`](https://github.com/npm/npm/commit/bdf1c8483f5c4ad79b712db12d73276e15883923)
+  [#7006](https://github.com/npm/npm/issues/7006) Only `chown` template and
+  top-level Git cache directories. ([@othiym23](https://github.com/othiym23))
+* [`581a72d`](https://github.com/npm/npm/commit/581a72da18f35ec87edef6255adf4ef4714a478c)
+  [#7006](https://github.com/npm/npm/issues/7006) Map Git remote inflighting to
+  clone paths rather than Git URLs. ([@othiym23](https://github.com/othiym23))
+* [`1c48d08`](https://github.com/npm/npm/commit/1c48d08dea31a11ac11a285cac598a482481cade)
+  [#7009](https://github.com/npm/npm/issues/7009) `normalize-git-url@1.0.0`:
+  Normalize Git URLs while caching. ([@othiym23](https://github.com/othiym23))
+* [`5423cf0`](https://github.com/npm/npm/commit/5423cf0be8ff2b76bfff7c8e780e5f261235a86a)
+  [#7009](https://github.com/npm/npm/issues/7009) Pack tarballs to their final
+  locations atomically. ([@othiym23](https://github.com/othiym23))
+* [`7f6557f`](https://github.com/npm/npm/commit/7f6557ff317469ee4a87c542ff9a991e74ce9f38)
+  [#7009](https://github.com/npm/npm/issues/7009) Inflight local directory
+  packing, just to be safe. ([@othiym23](https://github.com/othiym23))
+
+Other changes:
+
+* [`1c491e6`](https://github.com/npm/npm/commit/1c491e65d70af013e8d5ac008d6d9762d6d91793)
+  [#6991](https://github.com/npm/npm/issues/6991) `npm version`: fix regression
+  in dirty-checking behavior ([@rlidwka](https://github.com/rlidwka))
+* [`55ceb2b`](https://github.com/npm/npm/commit/55ceb2b08ff8a0f56b94cc972ca15d7862e8733c)
+  [#1991](https://github.com/npm/npm/issues/1991) modify docs to reflect actual
+  `npm restart` behavior ([@smikes](https://github.com/smikes))
+* [`fb8e31b`](https://github.com/npm/npm/commit/fb8e31b95476a50bda35a665a99eec8a5d25a4db)
+  [#6982](https://github.com/npm/npm/issues/6982) when doing registry
+  operations, ensure registry URL always ends with `/`
+  ([@othiym23](https://github.com/othiym23))
+* [`5bcba65`](https://github.com/npm/npm/commit/5bcba65bed2678ffe80fb596f72abe9871d131c8)
+  pull whitelisted Git environment variables out into a named constant
+  ([@othiym23](https://github.com/othiym23))
+* [`be04bbd`](https://github.com/npm/npm/commit/be04bbdc52ebfc820cd939df2f7d79fe87067747)
+  [#7000](https://github.com/npm/npm/issues/7000) No longer install badly-named
+  manpage files, and log an error when trying to uninstall them.
+  ([@othiym23](https://github.com/othiym23))
+* [`6b7c5ec`](https://github.com/npm/npm/commit/6b7c5eca6b65e1247d0e51f6400cf2637ac880ce)
+  [#7011](https://github.com/npm/npm/issues/7011) Send auth for tarball fetches
+  for packages in `npm-shrinkwrap.json` from private registries.
+    ([@othiym23](https://github.com/othiym23))
+* [`9b9de06`](https://github.com/npm/npm/commit/9b9de06a99893b40aa23f0335726dec6df7979db)
+  `glob@4.3.2`: Better handling of trailing slashes.
+  ([@isaacs](https://github.com/isaacs))
+* [`030f3c7`](https://github.com/npm/npm/commit/030f3c7450b8ce124a19073bfbae0948a0a1a02c)
+  `semver@4.2.0`: Diffing between version strings.
+  ([@isaacs](https://github.com/isaacs))
+
+### v2.1.16 (2014-12-22):
+
+* [`a4e4e33`](https://github.com/npm/npm/commit/a4e4e33edb35c68813f04bf42bdf933a6f727bcd)
+  [#6987](https://github.com/npm/npm/issues/6987) `read-installed@3.1.5`: fixed
+  a regression where a new / empty package would cause read-installed to throw.
+  ([@othiym23](https://github.com/othiym23) /
+  [@pgilad](https://github.com/pgilad))
+
+### v2.1.15 (2014-12-18):
+
+* [`e5a2dee`](https://github.com/npm/npm/commit/e5a2dee47c74f26c56fee5998545b97497e830c8)
+  [#6951](https://github.com/npm/npm/issues/6951) `fs-vacuum@1.2.5`: Use
+  `path-is-inside` for better Windows normalization.
+  ([@othiym23](https://github.com/othiym23))
+* [`ac6167c`](https://github.com/npm/npm/commit/ac6167c2b9432939c57296f7ddd11ad5f8f918b2)
+  [#6955](https://github.com/npm/npm/issues/6955) Call `path.normalize` in
+  `lib/utils/gently-rm.js` for better Windows normalization.
+  ([@ben-page](https://github.com/ben-page))
+* [`c625d71`](https://github.com/npm/npm/commit/c625d714795e3b5badd847945e2401adfad5a196)
+  [#6964](https://github.com/npm/npm/issues/6964) Clarify CA configuration
+  docs. ([@jeffjo](https://github.com/jeffjo))
+* [`58b8cb5`](https://github.com/npm/npm/commit/58b8cb5cdf26a854358b7c2ab636572dba9bac16)
+  [#6950](https://github.com/npm/npm/issues/6950) Fix documentation typos.
+  ([@martinvd](https://github.com/martinvd))
+* [`7c1299d`](https://github.com/npm/npm/commit/7c1299d00538ea998684a1903a4091eafc63b7f1)
+  [#6909](https://github.com/npm/npm/issues/6909) Remove confusing mention of
+  rubygems `~>` semver operator. ([@mjtko](https://github.com/mjtko))
+* [`7dfdcc6`](https://github.com/npm/npm/commit/7dfdcc6debd8ef1fc52a2b508997d15887aad824)
+  [#6909](https://github.com/npm/npm/issues/6909) `semver@4.1.1`: Synchronize
+  documentation with PR [#6909](https://github.com/npm/npm/issues/6909)
+  ([@othiym23](https://github.com/othiym23))
+* [`adfddf3`](https://github.com/npm/npm/commit/adfddf3b682e0ae08e4b59d87c1b380dd651c572)
+  [#6925](https://github.com/npm/npm/issues/6925) Correct typo in
+  `doc/api/npm-ls.md` ([@oddurs](https://github.com/oddurs))
+* [`f5c534b`](https://github.com/npm/npm/commit/f5c534b711ab173129baf366c4f08d68f6117333)
+  [#6920](https://github.com/npm/npm/issues/6920) Remove recommendation to run
+  as root from `README.md`.
+  ([@robertkowalski](https://github.com/robertkowalski))
+* [`3ef4459`](https://github.com/npm/npm/commit/3ef445922cd39f25b992d91bd22c4d367882ea22)
+  [#6920](https://github.com/npm/npm/issues/6920) `npm-@googlegroups.com` has
+  gone the way of all things. That means it's gone.
+  ([@robertkowalski](https://github.com/robertkowalski))
+
+### v2.1.14 (2014-12-13):
+
+* [`cf7aeae`](https://github.com/npm/npm/commit/cf7aeae3c3a24e48d3de4006fa082f0c6040922a)
+  [#6923](https://github.com/npm/npm/issues/6923) Overaggressive link update
+  for new website broke node-gyp. ([@othiym23](https://github.com/othiym23))
+
+### v2.1.13 (2014-12-11):
+
+* [`cbb890e`](https://github.com/npm/npm/commit/cbb890eeacc0501ba1b8c6955f1c829c8af9f486)
+  [#6897](https://github.com/npm/npm/issues/6897) npm is a nice package manager
+  that runs server-side JavaScript. ([@othiym23](https://github.com/othiym23))
+* [`d9043c3`](https://github.com/npm/npm/commit/d9043c3b8d7450c3cb9ca795028c0e1c05377820)
+  [#6893](https://github.com/npm/npm/issues/6893) Remove erroneous docs about
+  preupdate / update / postupdate lifecycle scripts, which have never existed.
+  ([@devTristan](https://github.com/devTristan))
+* [`c5df4d0`](https://github.com/npm/npm/commit/c5df4d0d683cd3506808d1cd1acebff02a8b82db)
+  [#6884](https://github.com/npm/npm/issues/6884) Update npmjs.org to npmjs.com
+  in docs. ([@linclark](https://github.com/linclark))
+* [`cb6ff8d`](https://github.com/npm/npm/commit/cb6ff8dace1b439851701d4784d2d719c22ca7a7)
+  [#6879](https://github.com/npm/npm/issues/6879) npm version: Update
+  shrinkwrap post-check. ([@othiym23](https://github.com/othiym23))
+* [`2a340bd`](https://github.com/npm/npm/commit/2a340bdd548c6449468281e1444a032812bff677)
+  [#6868](https://github.com/npm/npm/issues/6868) Use magic numbers instead of
+  regexps to distinguish tarballs from other things.
+  ([@daxxog](https://github.com/daxxog))
+* [`f1c8bdb`](https://github.com/npm/npm/commit/f1c8bdb3f6b753d0600597e12346bdc3a34cb9c1)
+  [#6861](https://github.com/npm/npm/issues/6861) `npm-registry-client@4.0.5`:
+  Distinguish between error properties that are part of the response and error
+  strings that should be returned to the user.
+  ([@disrvptor](https://github.com/disrvptor))
+* [`d3a1b63`](https://github.com/npm/npm/commit/d3a1b6397fddef04b5198ca89d36d720aeb05eb6)
+  [#6762](https://github.com/npm/npm/issues/6762) Make `npm outdated` ignore
+  private packages. ([@KenanY](https://github.com/KenanY))
+* [`16d8542`](https://github.com/npm/npm/commit/16d854283ca5bcdb0cb2812fc5745d841652b952)
+  install.sh: Drop support for node < 0.8, remove engines bits.
+  ([@isaacs](https://github.com/isaacs))
+* [`b9c6046`](https://github.com/npm/npm/commit/b9c60466d5b713b1dc2947da14a5dfe42352e029)
+  `init-package-json@1.1.3`: ([@terinstock](https://github.com/terinstock))
+  noticed that `init.license` configuration doesn't stick. Make sure that
+  dashed defaults don't trump dotted parameters.
+  ([@othiym23](https://github.com/othiym23))
+* [`b6d6acf`](https://github.com/npm/npm/commit/b6d6acfc02c8887f78067931babab8f7c5180fed)
+  `which@1.0.8`: No longer use graceful-fs for some reason.
+  ([@isaacs](https://github.com/isaacs))
+* [`d39f673`](https://github.com/npm/npm/commit/d39f673caf08a90fb2bb001d79c98062d2cd05f4)
+  `request@2.51.0`: Incorporate bug fixes. ([@nylen](https://github.com/nylen))
+* [`c7ad727`](https://github.com/npm/npm/commit/c7ad7279cc879930ec58ccc62fa642e621ecb65c)
+  `columnify@1.3.2`: Incorporate bug fixes.
+  ([@timoxley](https://github.com/timoxley))
+
+### v2.1.12 (2014-12-04):
+
+* [`e5b1e44`](https://github.com/npm/npm/commit/e5b1e448bb4a9d6eae4ba0f67b1d3c2cea8ed383)
+  add alias verison=version ([@isaacs](https://github.com/isaacs))
+* [`5eed7bd`](https://github.com/npm/npm/commit/5eed7bddbd7bb92a44c4193c93e8529500c558e6)
+  `request@2.49.0` ([@nylen](https://github.com/nylen))
+* [`e72f81d`](https://github.com/npm/npm/commit/e72f81d8412540ae7d1e0edcc37c11bcb8169051)
+  `glob@4.3.1` / `minimatch@2.0.1` ([@isaacs](https://github.com/isaacs))
+* [`b8dcc36`](https://github.com/npm/npm/commit/b8dcc3637b5b71933b97162b7aff1b1a622c13e2)
+  `graceful-fs@3.0.5` ([@isaacs](https://github.com/isaacs))
+
+### v2.1.11 (2014-11-27):
+
+* [`4861d28`](https://github.com/npm/npm/commit/4861d28ad0ebd959fe6bc15b9c9a50fcabe57f55)
+  `which@1.0.7`: License update. ([@isaacs](https://github.com/isaacs))
+* [`30a2ea8`](https://github.com/npm/npm/commit/30a2ea80c891d384b31a1cf28665bba4271915bd)
+  `ini@1.3.2`: License update. ([@isaacs](https://github.com/isaacs))
+* [`6a4ea05`](https://github.com/npm/npm/commit/6a4ea054f6ddf52fc58842ba2046564b04c5c0e2)
+  `fstream@1.0.3`: Propagate error events to downstream streams.
+  ([@gfxmonk](https://github.com/gfxmonk))
+* [`a558695`](https://github.com/npm/npm/commit/a5586954f1c18df7c96137e0a79f41a69e7a884e)
+  `tar@1.0.3`: Don't extract broken files, propagate `drain` event.
+  ([@gfxmonk](https://github.com/gfxmonk))
+* [`989624e`](https://github.com/npm/npm/commit/989624e8321f87734c1b1272fc2f646e7af1f81c)
+  [#6767](https://github.com/npm/npm/issues/6767) Actually pass parameters when
+  adding git repo to cach under Windows.
+  ([@othiym23](https://github.com/othiym23))
+* [`657af73`](https://github.com/npm/npm/commit/657af7308f7d6cd2f81389fcf0d762252acaf1ce)
+  [#6774](https://github.com/npm/npm/issues/6774) When verifying paths on
+  unbuild, resolve both source and target as symlinks.
+  ([@hokaccha](https://github.com/hokaccha))
+* [`fd19c40`](https://github.com/npm/npm/commit/fd19c4046414494f9647a6991c00f8406a939929)
+  [#6713](https://github.com/npm/npm/issues/6713)
+  `realize-package-specifier@1.3.0`: Make it so that `npm install foo@1` work
+  when a file named `1` exists. ([@iarna](https://github.com/iarna))
+* [`c8ac37a`](https://github.com/npm/npm/commit/c8ac37a470491b2ed28514536e2e198494638c79)
+  `npm-registry-client@4.0.4`: Fix regression in failed fetch retries.
+  ([@othiym23](https://github.com/othiym23))
+
+### v2.1.10 (2014-11-20):
+
+* [`756f3d4`](https://github.com/npm/npm/commit/756f3d40fe18bc02bc93afe17016dfcc266c4b6b)
+  [#6735](https://github.com/npm/npm/issues/6735) Log "already built" messages
+  at info, not error. ([@smikes](https://github.com/smikes))
+* [`1b7330d`](https://github.com/npm/npm/commit/1b7330dafba3bbba171f74f1e58b261cb1b9301e)
+  [#6729](https://github.com/npm/npm/issues/6729) `npm-registry-client@4.0.3`:
+  GitHub won't redirect you through an HTML page to a compressed tarball if you
+  don't tell it you accept JSON responses.
+  ([@KenanY](https://github.com/KenanY))
+* [`d9c7857`](https://github.com/npm/npm/commit/d9c7857be02dacd274e55bf6d430d90d91509d53)
+  [#6506](https://github.com/npm/npm/issues/6506)
+  `readdir-scoped-modules@1.0.1`: Use `graceful-fs` so the whole dependency
+  tree gets read,  even in case of `EMFILE`.
+  ([@sakana](https://github.com/sakana))
+* [`3a085be`](https://github.com/npm/npm/commit/3a085be158ace8f1e4395e69f8c102d3dea00c5f)
+  Grammar fix in docs. ([@icylace](https://github.com/icylace))
+* [`3f8e2ff`](https://github.com/npm/npm/commit/3f8e2ff8342d327d6f1375437ecf4bd945dc360f)
+  Did you know that npm has a Code of Conduct? Add a link to it to
+  CONTRIBUTING.md. ([@isaacs](https://github.com/isaacs))
+* [`319ccf6`](https://github.com/npm/npm/commit/319ccf633289e06e57a80d74c39706899348674c)
+  `glob@4.2.1`: Performance tuning. ([@isaacs](https://github.com/isaacs))
+* [`835f046`](https://github.com/npm/npm/commit/835f046e7568c33e81a0b48c84cff965024d8b8a)
+  `readable-stream@1.0.33`: Bug fixes. ([@rvagg](https://github.com/rvagg))
+* [`a34c38d`](https://github.com/npm/npm/commit/a34c38d0732fb246d11f2a776d2ad0d8db654338)
+  `request@2.48.0`: Bug fixes. ([@nylen](https://github.com/nylen))
+
+### v2.1.9 (2014-11-13):
+
+* [`eed9f61`](https://github.com/npm/npm/commit/eed9f6101963364acffc59d7194fc1655180e80c)
+  [#6542](https://github.com/npm/npm/issues/6542) `npm owner add / remove` now
+  works properly with scoped packages
+  ([@othiym23](https://github.com/othiym23))
+* [`cd25973`](https://github.com/npm/npm/commit/cd25973825aa5315b7ebf26227bd32bd6be5533f)
+  [#6548](https://github.com/npm/npm/issues/6548) using sudo won't leave the
+  cache's git directories with bad permissions
+  ([@othiym23](https://github.com/othiym23))
+* [`56930ab`](https://github.com/npm/npm/commit/56930abcae6a6ea41f1b75e23765c61259cef2dd)
+  fixed irregular `npm cache ls` output (yes, that's a thing)
+  ([@othiym23](https://github.com/othiym23))
+* [`740f483`](https://github.com/npm/npm/commit/740f483db6ec872b453065842da080a646c3600a)
+  legacy tests no longer poison user's own cache
+  ([@othiym23](https://github.com/othiym23))
+* [`ce37f14`](https://github.com/npm/npm/commit/ce37f142a487023747a9086335618638ebca4372)
+  [#6169](https://github.com/npm/npm/issues/6169) add terse output similar to
+  `npm publish / unpublish` for `npm owner add / remove`
+  ([@KenanY](https://github.com/KenanY))
+* [`bf2b8a6`](https://github.com/npm/npm/commit/bf2b8a66d7188900bf1e957c052b893948b67e0e)
+  [#6680](https://github.com/npm/npm/issues/6680) pass auth credentials to
+  registry when downloading search index
+  ([@terinjokes](https://github.com/terinjokes))
+* [`00ecb61`](https://github.com/npm/npm/commit/00ecb6101422984696929f602e14da186f9f669c)
+  [#6400](https://github.com/npm/npm/issues/6400) `.npmignore` is respected for
+  git repos on cache / pack / publish
+  ([@othiym23](https://github.com/othiym23))
+* [`d1b3a9e`](https://github.com/npm/npm/commit/d1b3a9ec5e2b6d52765ba5da5afb08dba41c49c1)
+  [#6311](https://github.com/npm/npm/issues/6311) `npm ls -l --depth=0` no
+  longer prints phantom duplicate children
+  ([@othiym23](https://github.com/othiym23))
+* [`07c5f34`](https://github.com/npm/npm/commit/07c5f34e45c9b18c348ed53b5763b1c5d4325740)
+  [#6690](https://github.com/npm/npm/issues/6690) `uid-number@0.0.6`: clarify
+  confusing names in error-handling code ([@isaacs](https://github.com/isaacs))
+* [`1ac9be9`](https://github.com/npm/npm/commit/1ac9be9f3bab816211d72d13cb05b5587878a586)
+  [#6684](https://github.com/npm/npm/issues/6684) `npm init`: don't report
+  write if canceled ([@smikes](https://github.com/smikes))
+* [`7bb207d`](https://github.com/npm/npm/commit/7bb207d1d6592a9cffc986871e4b671575363c2f)
+  [#5754](https://github.com/npm/npm/issues/5754) never remove app directories
+  on failed install ([@othiym23](https://github.com/othiym23))
+* [`705ce60`](https://github.com/npm/npm/commit/705ce601e7b9c5428353e02ebb30cb76c1991fdd)
+  [#5754](https://github.com/npm/npm/issues/5754) `fs-vacuum@1.2.2`: don't
+  throw when another fs task writes to a directory being vacuumed
+  ([@othiym23](https://github.com/othiym23))
+* [`1b650f4`](https://github.com/npm/npm/commit/1b650f4f217c413a2ffb96e1701beb5aa67a0de2)
+  [#6255](https://github.com/npm/npm/issues/6255) ensure that order credentials
+  are used from `.npmrc` doesn't regress
+  ([@othiym23](https://github.com/othiym23))
+* [`9bb2c34`](https://github.com/npm/npm/commit/9bb2c3435cedef40b45d3e9bd7a8edfb8cbe7209)
+  [#6644](https://github.com/npm/npm/issues/6644) `warn` rather than `info` on
+  fetch failure ([@othiym23](https://github.com/othiym23))
+* [`e34a7b6`](https://github.com/npm/npm/commit/e34a7b6b7371b1893a062f627ae8e168546d7264)
+  [#6524](https://github.com/npm/npm/issues/6524) `npm-registry-client@4.0.2`:
+  proxy via `request` more transparently
+  ([@othiym23](https://github.com/othiym23))
+* [`40afd6a`](https://github.com/npm/npm/commit/40afd6aaf34c11a10e80ec87b115fb2bb907e3bd)
+  [#6524](https://github.com/npm/npm/issues/6524) push proxy settings into
+  `request` ([@tauren](https://github.com/tauren))
+
+### v2.1.8 (2014-11-06):
+
+* [`063d843`](https://github.com/npm/npm/commit/063d843965f9f0bfa5732d7c2d6f5aa37a8260a2)
+  npm version now updates version in npm-shrinkwrap.json
+  ([@faiq](https://github.com/faiq))
+* [`3f53cd7`](https://github.com/npm/npm/commit/3f53cd795f8a600e904a97f215ba5b5a9989d9dd)
+  [#6559](https://github.com/npm/npm/issues/6559) save local dependencies in
+  npm-shrinkwrap.json ([@Torsph](https://github.com/Torsph))
+* [`e249262`](https://github.com/npm/npm/commit/e24926268b2d2220910bc81cce6d3b2e08d94eb1)
+  npm-faq.md: mention scoped pkgs in namespace Q
+  ([@smikes](https://github.com/smikes))
+* [`6b06ec4`](https://github.com/npm/npm/commit/6b06ec4ef5da490bdca1512fa7f12490245c192b)
+  [#6642](https://github.com/npm/npm/issues/6642) `init-package-json@1.1.2`:
+  Handle both `init-author-name` and `init.author.name`.
+  ([@othiym23](https://github.com/othiym23))
+* [`9cb334c`](https://github.com/npm/npm/commit/9cb334c8a895a55461aac18791babae779309a0e)
+  [#6409](https://github.com/npm/npm/issues/6409) document commit-ish with
+  GitHub URLs ([@smikes](https://github.com/smikes))
+* [`0aefae9`](https://github.com/npm/npm/commit/0aefae9bc2598a4b7a3ee7bb2306b42e3e12bb28)
+  [#2959](https://github.com/npm/npm/issues/2959) npm run no longer fails
+  silently ([@flipside](https://github.com/flipside))
+* [`e007a2c`](https://github.com/npm/npm/commit/e007a2c1e4fac1759fa61ac6e78c6b83b2417d11)
+  [#3908](https://github.com/npm/npm/issues/3908) include command in spawn
+  errors ([@smikes](https://github.com/smikes))
+
+### v2.1.7 (2014-10-30):
+
+* [`6750b05`](https://github.com/npm/npm/commit/6750b05dcba20d8990a672957ec56c48f97e241a)
+  [#6398](https://github.com/npm/npm/issues/6398) `npm-registry-client@4.0.0`:
+  consistent API, handle relative registry paths, use auth more consistently
+  ([@othiym23](https://github.com/othiym23))
+* [`7719cfd`](https://github.com/npm/npm/commit/7719cfdd8b204dfeccc41289707ea58b4d608905)
+  [#6560](https://github.com/npm/npm/issues/6560) use new npm-registry-client
+  API ([@othiym23](https://github.com/othiym23))
+* [`ed61971`](https://github.com/npm/npm/commit/ed619714c93718b6c1922b8c286f4b6cd2b97c80)
+  move caching of search metadata from `npm-registry-client` to npm itself
+  ([@othiym23](https://github.com/othiym23))
+* [`3457041`](https://github.com/npm/npm/commit/34570414cd528debeb22943873440594d7f47abf)
+  handle caching of metadata independently from `npm-registry-client`
+  ([@othiym23](https://github.com/othiym23))
+* [`20a331c`](https://github.com/npm/npm/commit/20a331ced6a52faac6ec242e3ffdf28bcd447c40)
+  [#6538](https://github.com/npm/npm/issues/6538) map registry URLs to
+  credentials more safely ([@indexzero](https://github.com/indexzero))
+* [`4072e97`](https://github.com/npm/npm/commit/4072e97856bf1e7affb38333d080c172767eea27)
+  [#6589](https://github.com/npm/npm/issues/6589) `npm-registry-client@4.0.1`:
+  allow publishing of packages with names identical to built-in Node modules
+  ([@feross](https://github.com/feross))
+* [`254f0e4`](https://github.com/npm/npm/commit/254f0e4adaf2c56e9df25c7343c43b0b0804a3b5)
+  `tar@1.0.2`: better error-handling ([@runk](https://github.com/runk))
+* [`73ee2aa`](https://github.com/npm/npm/commit/73ee2aa4f1a47e43fe7cf4317a5446875f7521fa)
+  `request@2.47.0` ([@mikeal](https://github.com/mikeal))
+
+### v2.1.6 (2014-10-23):
+
+* [`681b398`](https://github.com/npm/npm/commit/681b3987a18e7aba0aaf78c91a23c7cc0ab82ce8)
+  [#6523](https://github.com/npm/npm/issues/6523) fix default `logelevel` doc
+  ([@KenanY](https://github.com/KenanY))
+* [`80b368f`](https://github.com/npm/npm/commit/80b368ffd786d4d008734b56c4a6fe12d2cb2926)
+  [#6528](https://github.com/npm/npm/issues/6528) `npm version` should work in
+  a git directory without git ([@terinjokes](https://github.com/terinjokes))
+* [`5f5f9e4`](https://github.com/npm/npm/commit/5f5f9e4ddf544c2da6adf3f8c885238b0e745076)
+  [#6483](https://github.com/npm/npm/issues/6483) `init-package-json@1.1.1`:
+  Properly pick up default values from environment variables.
+  ([@othiym23](https://github.com/othiym23))
+* [`a114870`](https://github.com/npm/npm/commit/a1148702f53f82d49606b2e4dac7581261fff442)
+  perl 5.18.x doesn't like -pi without filenames
+  ([@othiym23](https://github.com/othiym23))
+* [`de5ba00`](https://github.com/npm/npm/commit/de5ba007a48db876eb5bfb6156435f3512d58977)
+  `request@2.46.0`: Tests and cleanup.
+  ([@othiym23](https://github.com/othiym23))
+* [`76933f1`](https://github.com/npm/npm/commit/76933f169f17b5273b32e924a7b392d5729931a7)
+  `fstream-npm@1.0.1`: Always include `LICENSE[.*]`, `LICENCE[.*]`,
+  `CHANGES[.*]`, `CHANGELOG[.*]`, and `HISTORY[.*]`.
+  ([@jonathanong](https://github.com/jonathanong))
+
+### v2.1.5 (2014-10-16):
+
+* [`6a14b23`](https://github.com/npm/npm/commit/6a14b232a0e34158bd95bb25c607167be995c204)
+  [#6397](https://github.com/npm/npm/issues/6397) Defactor npmconf back into
+  npm. ([@othiym23](https://github.com/othiym23))
+* [`4000e33`](https://github.com/npm/npm/commit/4000e3333a76ca4844681efa8737cfac24b7c2c8)
+  [#6323](https://github.com/npm/npm/issues/6323) Install `peerDependencies`
+  from top. ([@othiym23](https://github.com/othiym23))
+* [`5d119ae`](https://github.com/npm/npm/commit/5d119ae246f27353b14ff063559d1ba8c616bb89)
+  [#6498](https://github.com/npm/npm/issues/6498) Better error messages on
+  malformed `.npmrc` properties. ([@nicks](https://github.com/nicks))
+* [`ae18efb`](https://github.com/npm/npm/commit/ae18efb65fed427b1ef18e4862885bf60b87b92e)
+  [#6093](https://github.com/npm/npm/issues/6093) Replace instances of 'hash'
+  with 'object' in documentation. ([@zeke](https://github.com/zeke))
+* [`53108b2`](https://github.com/npm/npm/commit/53108b276fec5f97a38250933a2768d58b6928da)
+  [#1558](https://github.com/npm/npm/issues/1558) Clarify how local paths
+  should be used. ([@KenanY](https://github.com/KenanY))
+* [`344fa1a`](https://github.com/npm/npm/commit/344fa1a219ac8867022df3dc58a47636dde8a242)
+  [#6488](https://github.com/npm/npm/issues/6488) Work around bug in marked.
+  ([@othiym23](https://github.com/othiym23))
+
+OUTDATED DEPENDENCY CLEANUP JAMBOREE
+
+* [`60c2942`](https://github.com/npm/npm/commit/60c2942e13655d9ecdf6e0f1f97f10cb71a75255)
+  `realize-package-specifier@1.2.0`: Handle names and rawSpecs more
+  consistently. ([@iarna](https://github.com/iarna))
+* [`1b5c95f`](https://github.com/npm/npm/commit/1b5c95fbda77b87342bd48c5ecac5b1fd571ccfe)
+  `sha@1.3.0`: Change line endings?
+  ([@ForbesLindesay](https://github.com/ForbesLindesay))
+* [`d7dee3f`](https://github.com/npm/npm/commit/d7dee3f3f7d9e7c2061a4ecb4dd93e3e4bfe4f2e)
+  `request@2.45.0`: Dependency updates, better proxy support, better compressed
+  response handling, lots of 'use strict'.
+  ([@mikeal](https://github.com/mikeal))
+* [`3d75180`](https://github.com/npm/npm/commit/3d75180c2cc79fa3adfa0e4cb783a27192189a65)
+  `opener@1.4.0`: Added gratuitous return.
+  ([@Domenic](https://github.com/Domenic))
+* [`8e2703f`](https://github.com/npm/npm/commit/8e2703f78d280d1edeb749e257dda1f288bad6e3)
+  `retry@0.6.1` / `npm-registry-client@3.2.4`: Change of ownership.
+  ([@tim-kos](https://github.com/tim-kos))
+* [`c87b00f`](https://github.com/npm/npm/commit/c87b00f82f92434ee77831915012c77a6c244c39)
+  `once@1.3.1`: Wrap once with wrappy. ([@isaacs](https://github.com/isaacs))
+* [`01ec790`](https://github.com/npm/npm/commit/01ec790fd47def56eda6abb3b8d809093e8f493f)
+  `npm-user-validate@0.1.1`: Correct repository URL.
+  ([@robertkowalski](https://github.com/robertkowalski))
+* [`389e52c`](https://github.com/npm/npm/commit/389e52c2d94c818ca8935ccdcf392994fec564a2)
+  `glob@4.0.6`: Now absolutely requires `graceful-fs`.
+  ([@isaacs](https://github.com/isaacs))
+* [`e15ab15`](https://github.com/npm/npm/commit/e15ab15a27a8f14cf0d9dc6f11dee452080378a0)
+  `ini@1.3.0`: Tighten up whitespace handling.
+  ([@isaacs](https://github.com/isaacs))
+* [`7610f3e`](https://github.com/npm/npm/commit/7610f3e62e699292ece081bfd33084d436e3246d)
+  `archy@1.0.0` ([@substack](https://github.com/substack))
+* [`9c13149`](https://github.com/npm/npm/commit/9c1314985e513e20ffa3ea0ca333ba2ab78299c9)
+  `semver@4.1.0`: Add support for prerelease identifiers.
+  ([@bromanko](https://github.com/bromanko))
+* [`f096c25`](https://github.com/npm/npm/commit/f096c250441b031d758f03afbe8d2321f94c7703)
+  `graceful-fs@3.0.4`: Add a bunch of additional tests, skip the unfortunate
+  complications of `graceful-fs@3.0.3`. ([@isaacs](https://github.com/isaacs))
+
+### v2.1.4 (2014-10-09):
+
+* [`3aeb440`](https://github.com/npm/npm/commit/3aeb4401444fad83cc7a8d11bf2507658afa5248)
+  [#6442](https://github.com/npm/npm/issues/6442) proxying git needs `GIT_SSL_CAINFO`
+  ([@wmertens](https://github.com/wmertens))
+* [`a8da8d6`](https://github.com/npm/npm/commit/a8da8d6e0cd56d97728c0b76b51604ee06ef6264)
+  [#6413](https://github.com/npm/npm/issues/6413) write builtin config on any
+  global npm install ([@isaacs](https://github.com/isaacs))
+* [`9e4d632`](https://github.com/npm/npm/commit/9e4d632c0142ba55df07d624667738b8727336fc)
+  [#6343](https://github.com/npm/npm/issues/6343) don't pass run arguments to
+  pre & post scripts ([@TheLudd](https://github.com/TheLudd))
+* [`d831b1f`](https://github.com/npm/npm/commit/d831b1f7ca1a9921ea5b394e39b7130ecbc6d7b4)
+  [#6399](https://github.com/npm/npm/issues/6399) race condition: inflight
+  installs, prevent `peerDependency` problems
+  ([@othiym23](https://github.com/othiym23))
+* [`82b775d`](https://github.com/npm/npm/commit/82b775d6ff34c4beb6c70b2344d491a9f2026577)
+  [#6384](https://github.com/npm/npm/issues/6384) race condition: inflight
+  caching by URL rather than semver range
+  ([@othiym23](https://github.com/othiym23))
+* [`7bee042`](https://github.com/npm/npm/commit/7bee0429066fedcc9e6e962c043eb740b3792809)
+  `inflight@1.0.4`: callback can take arbitrary number of parameters
+  ([@othiym23](https://github.com/othiym23))
+* [`3bff494`](https://github.com/npm/npm/commit/3bff494f4abf17d6d7e0e4a3a76cf7421ecec35a)
+  [#5195](https://github.com/npm/npm/issues/5195) fixed regex color regression
+  for `npm search` ([@chrismeyersfsu](https://github.com/chrismeyersfsu))
+* [`33ba2d5`](https://github.com/npm/npm/commit/33ba2d585160a0a2a322cb76c4cd989acadcc984)
+  [#6387](https://github.com/npm/npm/issues/6387) allow `npm view global` if
+  package is specified ([@evanlucas](https://github.com/evanlucas))
+* [`99c4cfc`](https://github.com/npm/npm/commit/99c4cfceed413396d952cf05f4e3c710f9682c23)
+  [#6388](https://github.com/npm/npm/issues/6388) npm-publish →
+  npm-developers(7) ([@kennydude](https://github.com/kennydude))
+
+TEST CLEANUP EXTRAVAGANZA:
+
+* [`8d6bfcb`](https://github.com/npm/npm/commit/8d6bfcb88408f5885a2a67409854c43e5c3a23f6)
+  tap tests run with no system-wide side effects
+  ([@chrismeyersfsu](https://github.com/chrismeyersfsu))
+* [`7a1472f`](https://github.com/npm/npm/commit/7a1472fbdbe99956ad19f629e7eb1cc07ba026ef)
+  added npm cache cleanup script
+  ([@chrismeyersfsu](https://github.com/chrismeyersfsu))
+* [`0ce6a37`](https://github.com/npm/npm/commit/0ce6a3752fa9119298df15671254db6bc1d8e64c)
+  stripped out dead test code (othiym23)
+* replace spawn with common.npm (@chrismeyersfsu):
+    * [`0dcd614`](https://github.com/npm/npm/commit/0dcd61446335eaf541bf5f2d5186ec1419f86a42)
+      test/tap/cache-shasum-fork.js
+    * [`97f861c`](https://github.com/npm/npm/commit/97f861c967606a7e51e3d5047cf805d9d1adea5a)
+      test/tap/false_name.js
+    * [`d01b3de`](https://github.com/npm/npm/commit/d01b3de6ce03f25bbf3db97bfcd3cc85830d6801)
+      test/tap/git-cache-locking.js
+    * [`7b63016`](https://github.com/npm/npm/commit/7b63016778124c6728d6bd89a045c841ae3900b6)
+      test/tap/pack-scoped.js
+    * [`c877553`](https://github.com/npm/npm/commit/c877553265c39673e03f0a97972f692af81a595d)
+      test/tap/scripts-whitespace-windows.js
+    * [`df98525`](https://github.com/npm/npm/commit/df98525331e964131299d457173c697cfb3d95b9)
+      test/tap/prepublish.js
+    * [`99c4cfc`](https://github.com/npm/npm/commit/99c4cfceed413396d952cf05f4e3c710f9682c23)
+      test/tap/prune.js
+
+### v2.1.3 (2014-10-02):
+
+BREAKING CHANGE FOR THE SQRT(i) PEOPLE ACTUALLY USING `npm submodule`:
+
+* [`1e64473`](https://github.com/npm/npm/commit/1e6447360207f45ad6188e5780fdf4517de6e23d)
+  `rm -rf npm submodule` command, which has been broken since the Carter
+  Administration ([@isaacs](https://github.com/isaacs))
+
+BREAKING CHANGE IF YOU ARE FOR SOME REASON STILL USING NODE 0.6 AND YOU SHOULD
+NOT BE DOING THAT CAN YOU NOT:
+
+* [`3e431f9`](https://github.com/npm/npm/commit/3e431f9d6884acb4cde8bcb8a0b122a76b33ee1d)
+  [joyent/node#8492](https://github.com/joyent/node/issues/8492) bye bye
+  customFds, hello stdio ([@othiym23](https://github.com/othiym23))
+
+Other changes:
+
+* [`ea607a8`](https://github.com/npm/npm/commit/ea607a8a20e891ad38eed11b5ce2c3c0a65484b9)
+  [#6372](https://github.com/npm/npm/issues/6372) noisily error (without
+  aborting) on multi-{install,build} ([@othiym23](https://github.com/othiym23))
+* [`3ee2799`](https://github.com/npm/npm/commit/3ee2799b629fd079d2db21d7e8f25fa7fa1660d0)
+  [#6372](https://github.com/npm/npm/issues/6372) only make cache creation
+  requests in flight ([@othiym23](https://github.com/othiym23))
+* [`1a90ec2`](https://github.com/npm/npm/commit/1a90ec2f2cfbefc8becc6ef0c480e5edacc8a4cb)
+  [#6372](https://github.com/npm/npm/issues/6372) wait to put Git URLs in
+  flight until normalized ([@othiym23](https://github.com/othiym23))
+* [`664795b`](https://github.com/npm/npm/commit/664795bb7d8da7142417b3f4ef5986db3a394071)
+  [#6372](https://github.com/npm/npm/issues/6372) log what is and isn't in
+  flight ([@othiym23](https://github.com/othiym23))
+* [`00ef580`](https://github.com/npm/npm/commit/00ef58025a1f52dfabf2c4dc3898621d16a6e062)
+  `inflight@1.0.3`: fix largely theoretical race condition, because we really
+  really hate race conditions ([@isaacs](https://github.com/isaacs))
+* [`1cde465`](https://github.com/npm/npm/commit/1cde4658d897ae0f93ff1d65b258e1571b391182)
+  [#6363](https://github.com/npm/npm/issues/6363)
+  `realize-package-specifier@1.1.0`: handle local dependencies better
+  ([@iarna](https://github.com/iarna))
+* [`86f084c`](https://github.com/npm/npm/commit/86f084c6c6d7935cd85d72d9d94b8784c914d51e)
+  `realize-package-specifier@1.0.2`: dependency realization! in its own module!
+  ([@iarna](https://github.com/iarna))
+* [`553d830`](https://github.com/npm/npm/commit/553d830334552b83606b6bebefd821c9ea71e964)
+  `npm-package-arg@2.1.3`: simplified semver, better tests
+  ([@iarna](https://github.com/iarna))
+* [`bec9b61`](https://github.com/npm/npm/commit/bec9b61a316c19f5240657594f0905a92a474352)
+  `readable-stream@1.0.32`: for some reason
+  ([@rvagg](https://github.com/rvagg))
+* [`ff08ec5`](https://github.com/npm/npm/commit/ff08ec5f6d717bdbd559de0b2ede769306a9a763)
+  `dezalgo@1.0.1`: use wrappy for instrumentability
+  ([@isaacs](https://github.com/isaacs))
+
+### v2.1.2 (2014-09-29):
+
+* [`a1aa20e`](https://github.com/npm/npm/commit/a1aa20e44bb8285c6be1e7fa63b9da920e3a70ed)
+  [#6282](https://github.com/npm/npm/issues/6282)
+  `normalize-package-data@1.0.3`: don't prune bundledDependencies
+  ([@isaacs](https://github.com/isaacs))
+* [`a1f5fe1`](https://github.com/npm/npm/commit/a1f5fe1005043ce20a06e8b17a3e201aa3215357)
+  move locks back into cache, now path-aware
+  ([@othiym23](https://github.com/othiym23))
+* [`a432c4b`](https://github.com/npm/npm/commit/a432c4b48c881294d6d79b5f41c2e1c16ad15a8a)
+  convert lib/utils/tar.js to use atomic streams
+  ([@othiym23](https://github.com/othiym23))
+* [`b8c3c74`](https://github.com/npm/npm/commit/b8c3c74a3c963564233204161cc263e0912c930b)
+  `fs-write-stream-atomic@1.0.2`: Now works with streams1 fs.WriteStreams.
+  ([@isaacs](https://github.com/isaacs))
+* [`c7ab76f`](https://github.com/npm/npm/commit/c7ab76f44cce5f42add5e3ba879bd10e7e00c3e6)
+  logging cleanup ([@othiym23](https://github.com/othiym23))
+* [`4b2d95d`](https://github.com/npm/npm/commit/4b2d95d0641435b09d047ae5cb2226f292bf38f0)
+  [#6329](https://github.com/npm/npm/issues/6329) efficiently validate tmp
+  tarballs safely ([@othiym23](https://github.com/othiym23))
+
+### v2.1.1 (2014-09-26):
+
+* [`563225d`](https://github.com/npm/npm/commit/563225d813ea4c12f46d4f7821ac7f76ba8ee2d6)
+  [#6318](https://github.com/npm/npm/issues/6318) clean up locking; prefix
+  lockfile with "." ([@othiym23](https://github.com/othiym23))
+* [`c7f30e4`](https://github.com/npm/npm/commit/c7f30e4550fea882d31fcd4a55b681cd30713c44)
+  [#6318](https://github.com/npm/npm/issues/6318) remove locking code around
+  tarball packing and unpacking ([@othiym23](https://github.com/othiym23))
+
+### v2.1.0 (2014-09-25):
+
+NEW FEATURE:
+
+* [`3635601`](https://github.com/npm/npm/commit/36356011b6f2e6a5a81490e85a0a44eb27199dd7)
+  [#5520](https://github.com/npm/npm/issues/5520) Add `'npm view .'`.
+  ([@evanlucas](https://github.com/evanlucas))
+
+Other changes:
+
+* [`f24b552`](https://github.com/npm/npm/commit/f24b552b596d0627549cdd7c2d68fcf9006ea50a)
+  [#6294](https://github.com/npm/npm/issues/6294) Lock cache → lock cache
+  target. ([@othiym23](https://github.com/othiym23))
+* [`ad54450`](https://github.com/npm/npm/commit/ad54450104f94c82c501138b4eee488ce3a4555e)
+  [#6296](https://github.com/npm/npm/issues/6296) Ensure that npm-debug.log
+  file is created when rollbacks are done.
+  ([@isaacs](https://github.com/isaacs))
+* [`6810071`](https://github.com/npm/npm/commit/681007155a40ac9d165293bd6ec5d8a1423ccfca)
+  docs: Default loglevel "http" → "warn".
+  ([@othiym23](https://github.com/othiym23))
+* [`35ac89a`](https://github.com/npm/npm/commit/35ac89a940f23db875e882ce2888208395130336)
+  Skip installation of installed scoped packages.
+  ([@timoxley](https://github.com/timoxley))
+* [`e468527`](https://github.com/npm/npm/commit/e468527256ec599892b9b88d61205e061d1ab735)
+  Ensure cleanup executes for scripts-whitespace-windows test.
+  ([@timoxley](https://github.com/timoxley))
+* [`ef9101b`](https://github.com/npm/npm/commit/ef9101b7f346797749415086956a0394528a12c4)
+  Ensure cleanup executes for packed-scope test.
+  ([@timoxley](https://github.com/timoxley))
+* [`69b4d18`](https://github.com/npm/npm/commit/69b4d18cdbc2ae04c9afaffbd273b436a394f398)
+  `fs-write-stream-atomic@1.0.1`: Fix a race condition in our race-condition
+  fixer. ([@isaacs](https://github.com/isaacs))
+* [`26b17ff`](https://github.com/npm/npm/commit/26b17ff2e3b21ee26c6fdbecc8273520cff45718)
+  [#6272](https://github.com/npm/npm/issues/6272) `npmconf` decides what the
+  default prefix is. ([@othiym23](https://github.com/othiym23))
+* [`846faca`](https://github.com/npm/npm/commit/846facacc6427dafcf5756dcd36d9036539938de)
+  Fix development dependency is preferred over dependency.
+  ([@andersjanmyr](https://github.com/andersjanmyr))
+* [`9d1a9db`](https://github.com/npm/npm/commit/9d1a9db3af5adc48a7158a5a053eeb89ee41a0e7)
+  [#3265](https://github.com/npm/npm/issues/3265) Re-apply a71615a. Fixes
+  [#3265](https://github.com/npm/npm/issues/3265) again, with a test!
+  ([@glasser](https://github.com/glasser))
+* [`1d41db0`](https://github.com/npm/npm/commit/1d41db0b2744a7bd50971c35cc060ea0600fb4bf)
+  `marked-man@0.1.4`: Fixes formatting of synopsis blocks in man docs.
+  ([@kapouer](https://github.com/kapouer))
+* [`a623da0`](https://github.com/npm/npm/commit/a623da01bea1b2d3f3a18b9117cfd2d8e3cbdd77)
+  [#5867](https://github.com/npm/npm/issues/5867) Specify dummy git template
+  dir when cloning to prevent copying hooks.
+  ([@boneskull](https://github.com/boneskull))
+
+### v2.0.2 (2014-09-19):
+
+* [`42c872b`](https://github.com/npm/npm/commit/42c872b32cadc0e555638fc78eab3a38a04401d8)
+  [#5920](https://github.com/npm/npm/issues/5920)
+  `fs-write-stream-atomic@1.0.0` ([@isaacs](https://github.com/isaacs))
+* [`6784767`](https://github.com/npm/npm/commit/6784767fe15e28b44c81a1d4bb1738c642a65d78)
+  [#5920](https://github.com/npm/npm/issues/5920) make all write streams atomic
+  ([@isaacs](https://github.com/isaacs))
+* [`f6fac00`](https://github.com/npm/npm/commit/f6fac000dd98ebdd5ea1d5921175735d463d328b)
+  [#5920](https://github.com/npm/npm/issues/5920) barf on 0-length cached
+  tarballs ([@isaacs](https://github.com/isaacs))
+* [`3b37592`](https://github.com/npm/npm/commit/3b37592a92ea98336505189ae8ca29248b0589f4)
+  `write-file-atomic@1.1.0`: use graceful-fs
+  ([@iarna](https://github.com/iarna))
+
+### v2.0.1 (2014-09-18):
+
+* [`74c5ab0`](https://github.com/npm/npm/commit/74c5ab0a676793c6dc19a3fd5fe149f85fecb261)
+  [#6201](https://github.com/npm/npm/issues/6201) `npmconf@2.1.0`: scope
+  always-auth to registry URI ([@othiym23](https://github.com/othiym23))
+* [`774b127`](https://github.com/npm/npm/commit/774b127da1dd6fefe2f1299e73505d9146f00294)
+  [#6201](https://github.com/npm/npm/issues/6201) `npm-registry-client@3.2.2`:
+  use scoped always-auth settings ([@othiym23](https://github.com/othiym23))
+* [`f2d2190`](https://github.com/npm/npm/commit/f2d2190aa365d22378d03afab0da13f95614a583)
+  [#6201](https://github.com/npm/npm/issues/6201) support saving
+  `--always-auth` when logging in ([@othiym23](https://github.com/othiym23))
+* [`17c941a`](https://github.com/npm/npm/commit/17c941a2d583210fe97ed47e2968d94ce9f774ba)
+  [#6163](https://github.com/npm/npm/issues/6163) use `write-file-atomic`
+  instead of `fs.writeFile()` ([@fiws](https://github.com/fiws))
+* [`fb5724f`](https://github.com/npm/npm/commit/fb5724fd98e1509c939693568df83d11417ea337)
+  [#5925](https://github.com/npm/npm/issues/5925) `npm init -f`: allow `npm
+  init` to run without prompting
+  ([@michaelnisi](https://github.com/michaelnisi))
+* [`b706d63`](https://github.com/npm/npm/commit/b706d637d5965dbf8f7ce07dc5c4bc80887f30d8)
+  [#3059](https://github.com/npm/npm/issues/3059) disable prepublish when
+  running `npm install --production`
+  ([@jussi](https://github.com/jussi)-kalliokoski)
+* [`119f068`](https://github.com/npm/npm/commit/119f068eae2a36fa8b9c9ca557c70377792243a4)
+  attach the node version used when publishing a package to its registry
+  metadata ([@othiym23](https://github.com/othiym23))
+* [`8fe0081`](https://github.com/npm/npm/commit/8fe008181665519c2ac201ee432a3ece9798c31f)
+  seriously, don't use `npm -g update npm`
+  ([@thomblake](https://github.com/thomblake))
+* [`ea5b3d4`](https://github.com/npm/npm/commit/ea5b3d446b86dcabb0dbc6dba374d3039342ecb3)
+  `request@2.44.0` ([@othiym23](https://github.com/othiym23))
+
 ### v2.0.0 (2014-09-12):
 
 BREAKING CHANGES:

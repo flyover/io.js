@@ -10,14 +10,14 @@ Secure Socket Layer: encrypted stream communication.
 TLS/SSL is a public/private key infrastructure. Each client and each
 server must have a private key. A private key is created like this:
 
-    openssl genrsa -out ryans-key.pem 1024
+    openssl genrsa -out ryans-key.pem 2048
 
 All servers and some clients need to have a certificate. Certificates are public
 keys signed by a Certificate Authority or self-signed. The first step to
 getting a certificate is to create a "Certificate Signing Request" (CSR)
 file. This is done with:
 
-    openssl req -new -key ryans-key.pem -out ryans-csr.pem
+    openssl req -new -sha256 -key ryans-key.pem -out ryans-csr.pem
 
 To create a self-signed certificate with the CSR, do this:
 
@@ -25,8 +25,10 @@ To create a self-signed certificate with the CSR, do this:
 
 Alternatively you can send the CSR to a Certificate Authority for signing.
 
-(TODO: docs on creating a CA, for now interested users should just look at
-`test/fixtures/keys/Makefile` in the Node source code)
+For Perfect Forward Secrecy, it is required to generate Diffie-Hellman
+parameters:
+
+    openssl dhparam -outform PEM -out dhparam.pem 2048
 
 To create .pfx or .p12, do this:
 
@@ -136,31 +138,20 @@ automatically set as a listener for the [secureConnection][] event.  The
   - `crl` : Either a string or list of strings of PEM encoded CRLs (Certificate
     Revocation List)
 
-  - `ciphers`: A string describing the ciphers to use or exclude.
+  - `ciphers`: A string describing the ciphers to use or exclude, seperated by
+    `:`. The default cipher suite is:
 
-    To mitigate [BEAST attacks] it is recommended that you use this option in
-    conjunction with the `honorCipherOrder` option described below to
-    prioritize the non-CBC cipher.
+        ECDHE-RSA-AES256-SHA384:DHE-RSA-AES256-SHA384:ECDHE-RSA-AES256-SHA256:
+        DHE-RSA-AES256-SHA256:ECDHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA256:
+        HIGH:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!SRP:!CAMELLIA
 
-    Defaults to
-    `ECDHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA256:AES128-GCM-SHA256:RC4:HIGH:!MD5:!aNULL`.
-    Consult the [OpenSSL cipher list format documentation] for details
-    on the format.
-
-    `ECDHE-RSA-AES128-SHA256`, `DHE-RSA-AES128-SHA256` and
-    `AES128-GCM-SHA256` are TLS v1.2 ciphers and used when node.js is
-    linked against OpenSSL 1.0.1 or newer, such as the bundled version
-    of OpenSSL.  Note that it is still possible for a TLS v1.2 client
-    to negotiate a weaker cipher unless `honorCipherOrder` is enabled.
-
-    `RC4` is used as a fallback for clients that speak on older version of
-    the TLS protocol.  `RC4` has in recent years come under suspicion and
-    should be considered compromised for anything that is truly sensitive.
-    It is speculated that state-level actors possess the ability to break it.
-
-    **NOTE**: Previous revisions of this section suggested `AES256-SHA` as an
-    acceptable cipher. Unfortunately, `AES256-SHA` is a CBC cipher and therefore
-    susceptible to [BEAST attacks]. Do *not* use it.
+    The default cipher suite prefers ECDHE and DHE ciphers for Perfect Forward
+    secrecy, while offering *some* backward compatibiltity. Old clients which
+    rely on insecure and deprecated RC4 or DES-based ciphers (like Internet
+    Explorer 6) aren't able to complete the handshake with the default
+    configuration. If you absolutely must support these clients, the
+    [TLS recommendations] may offer a compatible cipher suite. For more details
+    on the format, see the [OpenSSL cipher list format documentation].
 
   - `ecdhCurve`: A string describing a named curve to use for ECDH key agreement
     or false to disable ECDH.
@@ -178,15 +169,7 @@ automatically set as a listener for the [secureConnection][] event.  The
     times out.
 
   - `honorCipherOrder` : When choosing a cipher, use the server's preferences
-    instead of the client preferences.
-
-    Although, this option is disabled by default, it is *recommended* that you
-    use this option in conjunction with the `ciphers` option to mitigate
-    BEAST attacks.
-
-    Note: If SSLv2 is used, the server will send its list of preferences to the
-    client, and the client chooses the cipher.  Support for SSLv2 is disabled
-    unless node.js was configured with `./configure --with-sslv2`.
+    instead of the client preferences. Default: `true`.
 
   - `requestCert`: If `true` the server will request a certificate from
     clients that connect and attempt to verify that certificate. Default:
@@ -221,7 +204,7 @@ automatically set as a listener for the [secureConnection][] event.  The
 
     NOTE: Automatically shared between `cluster` module workers.
 
-  - `sessionIdContext`: A string containing a opaque identifier for session
+  - `sessionIdContext`: A string containing an opaque identifier for session
     resumption. If `requestCert` is `true`, the default is MD5 hash value
     generated from command-line. Otherwise, the default is not provided.
 
@@ -448,14 +431,12 @@ dictionary with keys:
   instead of the client preferences. For further details see `tls` module
   documentation.
 
-If no 'ca' details are given, then node.js will use the default
+If no 'ca' details are given, then io.js will use the default
 publicly trusted list of CAs as given in
 <http://mxr.mozilla.org/mozilla/source/security/nss/lib/ckfw/builtins/certdata.txt>.
 
 
 ## tls.createSecurePair([context][, isServer][, requestCert][, rejectUnauthorized])
-
-    Stability: 0 - Deprecated. Use tls.TLSSocket instead.
 
 Creates a new secure pair object with two streams, one of which reads/writes
 encrypted data, and one reads/writes cleartext data.
@@ -503,7 +484,7 @@ connections using TLS or SSL.
 `function (tlsSocket) {}`
 
 This event is emitted after a new connection has been successfully
-handshaked. The argument is a instance of [tls.TLSSocket][]. It has all the
+handshaked. The argument is an instance of [tls.TLSSocket][]. It has all the
 common stream methods and events.
 
 `socket.authorized` is a boolean value which indicates if the
@@ -592,11 +573,12 @@ NOTE: you may want to use some npm module like [asn1.js] to parse the
 certificates.
 
 
-### server.listen(port[, host][, callback])
+### server.listen(port[, hostname][, callback])
 
-Begin accepting connections on the specified `port` and `host`.  If the
-`host` is omitted, the server will accept connections directed to any
-IPv4 address (`INADDR_ANY`).
+Begin accepting connections on the specified `port` and `hostname`. If the
+`hostname` is omitted, the server will accept connections on any IPv6 address
+(`::`) when IPv6 is available, or any IPv4 address (`0.0.0.0`) otherwise. A
+port value of zero will assign a random port.
 
 This function is asynchronous. The last parameter `callback` will be called
 when the server has been bound.
@@ -604,11 +586,11 @@ when the server has been bound.
 See `net.Server` for more information.
 
 
-### server.close()
+### server.close([callback])
 
 Stops the server from accepting new connections. This function is
 asynchronous, the server is finally closed when the server emits a `'close'`
-event.
+event.  Optionally, you can pass a callback to listen for the `'close'` event.
 
 ### server.address()
 
@@ -700,14 +682,14 @@ Example:
        { C: 'UK',
          ST: 'Acknack Ltd',
          L: 'Rhys Jones',
-         O: 'node.js',
+         O: 'io.js',
          OU: 'Test TLS Certificate',
          CN: 'localhost' },
       issuerInfo:
        { C: 'UK',
          ST: 'Acknack Ltd',
          L: 'Rhys Jones',
-         O: 'node.js',
+         O: 'io.js',
          OU: 'Test TLS Certificate',
          CN: 'localhost' },
       issuer:
@@ -817,3 +799,4 @@ The numeric representation of the local port.
 [ECDHE]: https://en.wikipedia.org/wiki/Elliptic_curve_Diffie%E2%80%93Hellman
 [asn1.js]: http://npmjs.org/package/asn1.js
 [OCSP request]: http://en.wikipedia.org/wiki/OCSP_stapling
+[TLS recommendations]: https://wiki.mozilla.org/Security/Server_Side_TLS

@@ -6,7 +6,6 @@
 
 #include "src/arguments.h"
 #include "src/conversions.h"
-#include "src/runtime/runtime.h"
 #include "src/runtime/runtime-utils.h"
 #include "src/string-search.h"
 #include "src/utils.h"
@@ -14,26 +13,6 @@
 
 namespace v8 {
 namespace internal {
-
-template <typename Char>
-static INLINE(Vector<const Char> GetCharVector(Handle<String> string));
-
-
-template <>
-Vector<const uint8_t> GetCharVector(Handle<String> string) {
-  String::FlatContent flat = string->GetFlatContent();
-  DCHECK(flat.IsOneByte());
-  return flat.ToOneByteVector();
-}
-
-
-template <>
-Vector<const uc16> GetCharVector(Handle<String> string) {
-  String::FlatContent flat = string->GetFlatContent();
-  DCHECK(flat.IsTwoByte());
-  return flat.ToUC16Vector();
-}
-
 
 class URIUnescape : public AllStatic {
  public:
@@ -73,7 +52,7 @@ MaybeHandle<String> URIUnescape::Unescape(Isolate* isolate,
   {
     DisallowHeapAllocation no_allocation;
     StringSearch<uint8_t, Char> search(isolate, STATIC_CHAR_VECTOR("%"));
-    index = search.Search(GetCharVector<Char>(source), 0);
+    index = search.Search(source->GetCharVector<Char>(), 0);
     if (index < 0) return source;
   }
   return UnescapeSlow<Char>(isolate, source, index);
@@ -90,7 +69,7 @@ MaybeHandle<String> URIUnescape::UnescapeSlow(Isolate* isolate,
   int unescaped_length = 0;
   {
     DisallowHeapAllocation no_allocation;
-    Vector<const Char> vector = GetCharVector<Char>(string);
+    Vector<const Char> vector = string->GetCharVector<Char>();
     for (int i = start_index; i < length; unescaped_length++) {
       int step;
       if (UnescapeChar(vector, i, length, &step) >
@@ -113,7 +92,7 @@ MaybeHandle<String> URIUnescape::UnescapeSlow(Isolate* isolate,
                                         ->NewRawOneByteString(unescaped_length)
                                         .ToHandleChecked();
     DisallowHeapAllocation no_allocation;
-    Vector<const Char> vector = GetCharVector<Char>(string);
+    Vector<const Char> vector = string->GetCharVector<Char>();
     for (int i = start_index; i < length; dest_position++) {
       int step;
       dest->SeqOneByteStringSet(dest_position,
@@ -126,7 +105,7 @@ MaybeHandle<String> URIUnescape::UnescapeSlow(Isolate* isolate,
                                         ->NewRawTwoByteString(unescaped_length)
                                         .ToHandleChecked();
     DisallowHeapAllocation no_allocation;
-    Vector<const Char> vector = GetCharVector<Char>(string);
+    Vector<const Char> vector = string->GetCharVector<Char>();
     for (int i = start_index; i < length; dest_position++) {
       int step;
       dest->SeqTwoByteStringSet(dest_position,
@@ -222,7 +201,7 @@ MaybeHandle<String> URIEscape::Escape(Isolate* isolate, Handle<String> string) {
 
   {
     DisallowHeapAllocation no_allocation;
-    Vector<const Char> vector = GetCharVector<Char>(string);
+    Vector<const Char> vector = string->GetCharVector<Char>();
     for (int i = 0; i < length; i++) {
       uint16_t c = vector[i];
       if (c >= 256) {
@@ -250,7 +229,7 @@ MaybeHandle<String> URIEscape::Escape(Isolate* isolate, Handle<String> string) {
 
   {
     DisallowHeapAllocation no_allocation;
-    Vector<const Char> vector = GetCharVector<Char>(string);
+    Vector<const Char> vector = string->GetCharVector<Char>();
     for (int i = 0; i < length; i++) {
       uint16_t c = vector[i];
       if (c >= 256) {

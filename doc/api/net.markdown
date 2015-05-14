@@ -33,9 +33,9 @@ on port 8124:
 
     var net = require('net');
     var server = net.createServer(function(c) { //'connection' listener
-      console.log('server connected');
+      console.log('client connected');
       c.on('end', function() {
-        console.log('server disconnected');
+        console.log('client disconnected');
       });
       c.write('hello\r\n');
       c.pipe(c);
@@ -98,7 +98,7 @@ Here is an example of a client of echo server as described previously:
     var net = require('net');
     var client = net.connect({port: 8124},
         function() { //'connect' listener
-      console.log('client connected');
+      console.log('connected to server!');
       client.write('world!\r\n');
     });
     client.on('data', function(data) {
@@ -106,7 +106,7 @@ Here is an example of a client of echo server as described previously:
       client.end();
     });
     client.on('end', function() {
-      console.log('client disconnected');
+      console.log('disconnected from server');
     });
 
 To connect on the socket `/tmp/echo.sock` the second line would just be
@@ -137,11 +137,12 @@ A factory method which returns a new ['net.Socket'](#net_class_net_socket).
 
 This class is used to create a TCP or local server.
 
-### server.listen(port[, host][, backlog][, callback])
+### server.listen(port[, hostname][, backlog][, callback])
 
-Begin accepting connections on the specified `port` and `host`.  If the
-`host` is omitted, the server will accept connections directed to any
-IPv4 address (`INADDR_ANY`). A port value of zero will assign a random port.
+Begin accepting connections on the specified `port` and `hostname`. If the
+`hostname` is omitted, the server will accept connections on any IPv6 address
+(`::`) when IPv6 is available, or any IPv4 address (`0.0.0.0`) otherwise. A
+port value of zero will assign a random port.
 
 Backlog is the maximum length of the queue of pending connections.
 The actual length will be determined by your OS through sysctl settings such as
@@ -166,7 +167,7 @@ would be to wait a second and then try again. This can be done with
       }
     });
 
-(Note: All sockets in Node set `SO_REUSEADDR` already)
+(Note: All sockets in io.js set `SO_REUSEADDR` already)
 
 
 ### server.listen(path[, callback])
@@ -339,7 +340,7 @@ following this event.  See example in discussion of `server.listen`.
 
 This object is an abstraction of a TCP or local socket.  `net.Socket`
 instances implement a duplex Stream interface.  They can be created by the
-user and used as a client (with `connect()`) or they can be created by Node
+user and used as a client (with `connect()`) or they can be created by io.js
 and passed to the user through the `'connection'` event of a server.
 
 ### new net.Socket([options])
@@ -383,7 +384,7 @@ The `connectListener` parameter will be added as an listener for the
 `net.Socket` has the property that `socket.write()` always works. This is to
 help users get up and running quickly. The computer cannot always keep up
 with the amount of data that is written to a socket - the network connection
-simply might be too slow. Node will internally queue up the data written to a
+simply might be too slow. io.js will internally queue up the data written to a
 socket and send it out over the wire when it is possible. (Internally it is
 polling on the socket's file descriptor for being writable).
 
@@ -608,6 +609,6 @@ Returns true if input is a version 6 IP address, otherwise returns false.
 [EventEmitter]: events.html#events_class_events_eventemitter
 ['listening']: #net_event_listening
 [server.getConnections()]: #net_server_getconnections_callback
-[Readable Stream]: stream.html#stream_readable_stream
+[Readable Stream]: stream.html#stream_class_stream_readable
 [stream.setEncoding()]: stream.html#stream_stream_setencoding_encoding
 [dns.lookup()]: dns.html#dns_dns_lookup_domain_family_callback

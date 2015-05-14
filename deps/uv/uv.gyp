@@ -1,14 +1,4 @@
 {
-  'variables': {
-    'uv_use_dtrace%': 'false',
-    # uv_parent_path is the relative path to libuv in the parent project
-    # this is only relevant when dtrace is enabled and libuv is a child project
-    # as it's necessary to correctly locate the object files for post
-    # processing.
-    # XXX gyp is quite sensitive about paths with double / they don't normalize
-    'uv_parent_path': '/',
-  },
-
   'target_defaults': {
     'conditions': [
       ['OS != "win"', {
@@ -27,28 +17,8 @@
       }],
     ],
     'xcode_settings': {
-        'conditions': [
-          [ 'clang==1', {
-            'WARNING_CFLAGS': [
-              '-Wall',
-              '-Wextra',
-              '-Wno-unused-parameter',
-              '-Wno-dollar-in-identifier-extension'
-            ]}, {
-           'WARNING_CFLAGS': [
-             '-Wall',
-             '-Wextra',
-             '-Wno-unused-parameter'
-          ]}
-        ]
-      ],
-      'OTHER_LDFLAGS': [
-      ],
-      'OTHER_CFLAGS': [
-        '-g',
-        '--std=gnu89',
-        '-pedantic'
-      ],
+      'WARNING_CFLAGS': [ '-Wall', '-Wextra', '-Wno-unused-parameter' ],
+      'OTHER_CFLAGS': [ '-g', '--std=gnu89', '-pedantic' ],
     }
   },
 
@@ -199,7 +169,7 @@
             ['uv_library=="shared_library" and OS!="mac"', {
               'link_settings': {
                 # Must correspond with UV_VERSION_MAJOR and UV_VERSION_MINOR
-                # in src/version.c
+                # in include/uv-version.h
                 'libraries': [ '-Wl,-soname,libuv.so.1.0' ],
               },
             }],
@@ -225,6 +195,7 @@
           'cflags': [ '-Wstrict-aliasing' ],
         }],
         [ 'OS=="linux"', {
+          'defines': [ '_GNU_SOURCE' ],
           'sources': [
             'src/unix/linux-core.c',
             'src/unix/linux-inotify.c',
@@ -296,20 +267,6 @@
         ['uv_library=="shared_library"', {
           'defines': [ 'BUILDING_UV_SHARED=1' ]
         }],
-        # FIXME(bnoordhuis or tjfontaine) Unify this, it's extremely ugly.
-        ['uv_use_dtrace=="true"', {
-          'defines': [ 'HAVE_DTRACE=1' ],
-          'dependencies': [ 'uv_dtrace_header' ],
-          'include_dirs': [ '<(SHARED_INTERMEDIATE_DIR)' ],
-          'conditions': [
-            [ 'OS not in "mac linux"', {
-              'sources': [ 'src/unix/dtrace.c' ],
-            }],
-            [ 'OS=="linux"', {
-              'sources': [ '<(SHARED_INTERMEDIATE_DIR)/dtrace.o' ]
-            }],
-          ],
-        }],
       ]
     },
 
@@ -359,6 +316,7 @@
         'test/test-loop-close.c',
         'test/test-loop-stop.c',
         'test/test-loop-time.c',
+        'test/test-loop-configure.c',
         'test/test-walk-handles.c',
         'test/test-watcher-cross-stop.c',
         'test/test-multiple-listen.c',
@@ -371,9 +329,11 @@
         'test/test-pipe-sendmsg.c',
         'test/test-pipe-server-close.c',
         'test/test-pipe-close-stdout-read-stdin.c',
+        'test/test-pipe-set-non-blocking.c',
         'test/test-platform-output.c',
         'test/test-poll.c',
         'test/test-poll-close.c',
+        'test/test-poll-close-doesnt-corrupt-stack.c',
         'test/test-poll-closesocket.c',
         'test/test-process-title.c',
         'test/test-ref.c',
@@ -410,6 +370,7 @@
         'test/test-tcp-write-queue-order.c',
         'test/test-threadpool.c',
         'test/test-threadpool-cancel.c',
+        'test/test-thread-equal.c',
         'test/test-mutexes.c',
         'test/test-thread.c',
         'test/test-barrier.c',
@@ -521,60 +482,5 @@
         },
       },
     },
-
-    {
-      'target_name': 'uv_dtrace_header',
-      'type': 'none',
-      'conditions': [
-        [ 'uv_use_dtrace=="true"', {
-          'actions': [
-            {
-              'action_name': 'uv_dtrace_header',
-              'inputs': [ 'src/unix/uv-dtrace.d' ],
-              'outputs': [ '<(SHARED_INTERMEDIATE_DIR)/uv-dtrace.h' ],
-              'action': [ 'dtrace', '-h', '-xnolibs', '-s', '<@(_inputs)',
-                '-o', '<@(_outputs)' ],
-            },
-          ],
-        }],
-      ],
-    },
-
-    # FIXME(bnoordhuis or tjfontaine) Unify this, it's extremely ugly.
-    {
-      'target_name': 'uv_dtrace_provider',
-      'type': 'none',
-      'conditions': [
-        [ 'uv_use_dtrace=="true" and OS not in "mac linux"', {
-          'actions': [
-            {
-              'action_name': 'uv_dtrace_o',
-              'inputs': [
-                'src/unix/uv-dtrace.d',
-                '<(PRODUCT_DIR)/obj.target/libuv<(uv_parent_path)src/unix/core.o',
-              ],
-              'outputs': [
-                '<(PRODUCT_DIR)/obj.target/libuv<(uv_parent_path)src/unix/dtrace.o',
-              ],
-              'action': [ 'dtrace', '-G', '-xnolibs', '-s', '<@(_inputs)',
-                '-o', '<@(_outputs)' ]
-            }
-          ]
-        }],
-        [ 'uv_use_dtrace=="true" and OS=="linux"', {
-          'actions': [
-            {
-              'action_name': 'uv_dtrace_o',
-              'inputs': [ 'src/unix/uv-dtrace.d' ],
-              'outputs': [ '<(SHARED_INTERMEDIATE_DIR)/dtrace.o' ],
-              'action': [
-                'dtrace', '-C', '-G', '-s', '<@(_inputs)', '-o', '<@(_outputs)'
-              ],
-            }
-          ]
-        }],
-      ]
-    },
-
   ]
 }

@@ -565,8 +565,11 @@ RB_HEAD(uv_timer_tree_s, uv_timer_s);
   void* alloc;                                                                \
   WCHAR* node;                                                                \
   WCHAR* service;                                                             \
-  struct addrinfoW* hints;                                                    \
-  struct addrinfoW* res;                                                      \
+  /* The addrinfoW field is used to store a pointer to the hints, and    */   \
+  /* later on to store the result of GetAddrInfoW. The final result will */   \
+  /* be converted to struct addrinfo* and stored in the addrinfo field.  */   \
+  struct addrinfoW* addrinfow;                                                \
+  struct addrinfo* addrinfo;                                                  \
   int retcode;
 
 #define UV_GETNAMEINFO_PRIVATE_FIELDS                                         \
@@ -639,3 +642,15 @@ int uv_utf16_to_utf8(const WCHAR* utf16Buffer, size_t utf16Size,
 int uv_utf8_to_utf16(const char* utf8Buffer, WCHAR* utf16Buffer,
     size_t utf16Size);
 
+#ifndef F_OK
+#define F_OK 0
+#endif
+#ifndef R_OK
+#define R_OK 4
+#endif
+#ifndef W_OK
+#define W_OK 2
+#endif
+#ifndef X_OK
+#define X_OK 1
+#endif

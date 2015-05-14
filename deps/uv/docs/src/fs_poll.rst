@@ -42,6 +42,10 @@ N/A
 API
 ---
 
+.. c:function:: int uv_fs_poll_init(uv_loop_t* loop, uv_fs_poll_t* handle)
+
+    Initialize the handle.
+
 .. c:function:: int uv_fs_poll_start(uv_fs_poll_t* handle, uv_fs_poll_cb poll_cb, const char* path, unsigned int interval)
 
     Check the file at `path` for changes every `interval` milliseconds.
@@ -54,12 +58,15 @@ API
 
     Stop the handle, the callback will no longer be called.
 
-.. c:function:: int uv_fs_poll_getpath(uv_fs_poll_t* handle, char* buf, size_t* len)
+.. c:function:: int uv_fs_poll_getpath(uv_fs_poll_t* handle, char* buffer, size_t* size)
 
     Get the path being monitored by the handle. The buffer must be preallocated
     by the user. Returns 0 on success or an error code < 0 in case of failure.
-    On sucess, `buf` will contain the path and `len` its length. If the buffer
+    On success, `buffer` will contain the path and `size` its length. If the buffer
     is not big enough UV_ENOBUFS will be returned and len will be set to the
     required size.
+
+    .. versionchanged:: 1.3.0 the returned length no longer includes the terminating null byte,
+                        and the buffer is not null terminated.
 
 .. seealso:: The :c:type:`uv_handle_t` API functions also apply.

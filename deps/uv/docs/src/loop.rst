@@ -38,7 +38,9 @@ Public members
 
 .. c:member:: void* uv_loop_t.data
 
-    Space for user-defined arbitrary data. libuv does not use this field.
+    Space for user-defined arbitrary data. libuv does not use this field. libuv does, however,
+    initialize it to NULL in :c:func:`uv_loop_init`, and it poisons the value (on debug builds)
+    on :c:func:`uv_loop_close`.
 
 
 API
@@ -47,6 +49,25 @@ API
 .. c:function:: int uv_loop_init(uv_loop_t* loop)
 
     Initializes the given `uv_loop_t` structure.
+
+.. c:function:: int uv_loop_configure(uv_loop_t* loop, uv_loop_option option, ...)
+
+    .. versionadded:: 1.0.2
+
+    Set additional loop options.  You should normally call this before the
+    first call to :c:func:`uv_run` unless mentioned otherwise.
+
+    Returns 0 on success or a UV_E* error code on failure.  Be prepared to
+    handle UV_ENOSYS; it means the loop option is not supported by the platform.
+
+    Supported options:
+
+    - UV_LOOP_BLOCK_SIGNAL: Block a signal when polling for new events.  The
+      second argument to :c:func:`uv_loop_configure` is the signal number.
+
+      This operation is currently only implemented for SIGPROF signals,
+      to suppress unnecessary wakeups when using a sampling profiler.
+      Requesting other signals will fail with UV_EINVAL.
 
 .. c:function:: int uv_loop_close(uv_loop_t* loop)
 
@@ -57,7 +78,13 @@ API
 .. c:function:: uv_loop_t* uv_default_loop(void)
 
     Returns the initialized default loop. It may return NULL in case of
-    allocation failture.
+    allocation failure.
+
+    This function is just a convenient way for having a global loop throughout
+    an application, the default loop is in no way different than the ones
+    initialized with :c:func:`uv_loop_init`. As such, the default loop can (and
+    should) be closed with :c:func:`uv_loop_close` so the resources associated
+    with it are freed.
 
 .. c:function:: int uv_run(uv_loop_t* loop, uv_run_mode mode)
 

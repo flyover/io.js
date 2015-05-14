@@ -11,6 +11,7 @@ var cbCalled = false
   , exitCode = 0
   , rollbacks = npm.rollbacks
   , chain = require("slide").chain
+  , writeStream = require("fs-write-stream-atomic")
 
 
 process.on("exit", function (code) {
@@ -66,17 +67,21 @@ function exit (code, noLog) {
       if (er) {
         log.error("error rolling back", er)
         if (!code) errorHandler(er)
-        else reallyExit(er)
+        else if (noLog) rm("npm-debug.log", reallyExit.bind(null, er))
+        else writeLogFile(reallyExit.bind(this, er))
       } else {
-        rm("npm-debug.log", reallyExit)
+        if (!noLog && code) writeLogFile(reallyExit)
+        else rm("npm-debug.log", reallyExit)
       }
     })
     rollbacks.length = 0
   }
   else if (code && !noLog) writeLogFile(reallyExit)
-  else reallyExit()
+  else rm("npm-debug.log", reallyExit)
 
-  function reallyExit() {
+  function reallyExit (er) {
+    if (er && !code) code = typeof er.errno === "number" ? er.errno : 1
+
     // truncate once it's been written.
     log.record.length = 0
 
@@ -176,7 +181,7 @@ function errorHandler (er) {
 
   case "ELIFECYCLE":
     log.error("", er.message)
-    log.error("", ["","Failed at the "+er.pkgid+" "+er.stage+" script."
+    log.error("", ["","Failed at the "+er.pkgid+" "+er.stage+" script '"+er.script+"'."
               ,"This is most likely a problem with the "+er.pkgname+" package,"
               ,"not with npm itself."
               ,"Tell the author that this fails on your system:"
@@ -334,6 +339,14 @@ function errorHandler (er) {
               ].join("\n"))
     break
 
+  case "ENOENT":
+    log.error("enoent", [er.message
+              ,"This is most likely not a problem with npm itself"
+              ,"and is related to npm not being able to find a file."
+              ,er.file?"\nCheck if the file '"+er.file+"' is present.":""
+              ].join("\n"))
+    break
+
   default:
     log.error("", er.message || er)
     log.error("", ["", "If you need help, you may report this error at:"
@@ -351,8 +364,7 @@ function writeLogFile (cb) {
   writingLogFile = true
   wroteLogFile = true
 
-  var fs = require("graceful-fs")
-    , fstr = fs.createWriteStream("npm-debug.log")
+  var fstr = writeStream("npm-debug.log")
     , os = require("os")
     , out = ""
 

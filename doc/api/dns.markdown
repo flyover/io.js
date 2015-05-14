@@ -2,13 +2,32 @@
 
     Stability: 3 - Stable
 
-Use `require('dns')` to access this module. All methods in the dns module
-use C-Ares except for `dns.lookup` which uses `getaddrinfo(3)` in a thread
-pool. C-Ares is much faster than `getaddrinfo` but the system resolver is
-more consistent with how other programs operate. When a user does
-`net.connect(80, 'google.com')` or `http.get({ host: 'google.com' })` the
-`dns.lookup` method is used. Users who need to do a large number of lookups
-quickly should use the methods that go through C-Ares.
+Use `require('dns')` to access this module.
+
+This module contains functions that belong to two different categories:
+
+1) Functions that use the underlying operating system facilities to perform
+name resolution, and that do not necessarily do any network communication.
+This category contains only one function: `dns.lookup`. __Developers looking
+to perform name resolution in the same way that other applications on the same
+operating system behave should use `dns.lookup`.__
+
+Here is an example that does a lookup of `www.google.com`.
+
+    var dns = require('dns');
+
+    dns.lookup('www.google.com', function onLookup(err, addresses, family) {
+      console.log('addresses:', addresses);
+    });
+
+2) Functions that connect to an actual DNS server to perform name resolution,
+and that _always_ use the network to perform DNS queries. This category
+contains all functions in the `dns` module but `dns.lookup`. These functions
+do not use the same set of configuration files than what `dns.lookup` uses.
+For instance, _they do not use the configuration from `/etc/hosts`_. These
+functions should be used by developers who do not want to use the underlying
+operating system's facilities for name resolution, and instead want to
+_always_ perform DNS queries.
 
 Here is an example which resolves `'www.google.com'` then reverse
 resolves the IP addresses which are returned.
@@ -31,6 +50,10 @@ resolves the IP addresses which are returned.
       });
     });
 
+There are subtle consequences in choosing one or another, please consult the
+[Implementation considerations section](#dns_implementation_considerations)
+for more information.
+
 ## dns.lookup(hostname[, options], callback)
 
 Resolves a hostname (e.g. `'google.com'`) into the first found A (IPv4) or
@@ -38,37 +61,52 @@ AAAA (IPv6) record. `options` can be an object or integer. If `options` is
 not provided, then IP v4 and v6 addresses are both valid. If `options` is
 an integer, then it must be `4` or `6`.
 
-Alternatively, `options` can be an object containing two properties,
-`family` and `hints`. Both properties are optional. If `family` is provided,
-it must be the integer `4` or `6`. If `family` is not provided then IP v4
-and v6 addresses are accepted. The `hints` field, if present, should be one
-or more of the supported `getaddrinfo` flags. If `hints` is not provided,
-then no flags are passed to `getaddrinfo`. Multiple flags can be passed
-through `hints` by logically `OR`ing their values. An example usage of
-`options` is shown below.
+Alternatively, `options` can be an object containing these properties:
+
+* `family` {Number} - The record family. If present, must be the integer
+  `4` or `6`. If not provided, both IP v4 and v6 addresses are accepted.
+* `hints`: {Number} - If present, it should be one or more of the supported
+  `getaddrinfo` flags. If `hints` is not provided, then no flags are passed to
+  `getaddrinfo`. Multiple flags can be passed through `hints` by logically
+  `OR`ing their values.
+  See [supported `getaddrinfo` flags](#dns_supported_getaddrinfo_flags) below
+  for more information on supported flags.
+* `all`: {Boolean} - When `true`, the callback returns all resolved addresses
+  in an array, otherwise returns a single address. Defaults to `false`.
+
+All properties are optional. An example usage of options is shown below.
 
 ```
 {
   family: 4,
-  hints: dns.ADDRCONFIG | dns.V4MAPPED
+  hints: dns.ADDRCONFIG | dns.V4MAPPED,
+  all: false
 }
 ```
 
-See [supported `getaddrinfo` flags](#dns_supported_getaddrinfo_flags) below for
-more information on supported flags.
+The callback has arguments `(err, address, family)`. `address` is a string
+representation of a IP v4 or v6 address. `family` is either the integer 4 or 6
+and denotes the family of `address` (not necessarily the value initially passed
+to `lookup`).
 
-The callback has arguments `(err, address, family)`.  The `address` argument
-is a string representation of a IP v4 or v6 address. The `family` argument
-is either the integer 4 or 6 and denotes the family of `address` (not
-necessarily the value initially passed to `lookup`).
+With the `all` option set, the arguments change to `(err, addresses)`, with
+`addresses` being an array of objects with the properties `address` and
+`family`.
 
 On error, `err` is an `Error` object, where `err.code` is the error code.
 Keep in mind that `err.code` will be set to `'ENOENT'` not only when
 the hostname does not exist but also when the lookup fails in other ways
 such as no available file descriptors.
 
+`dns.lookup` doesn't necessarily have anything to do with the DNS protocol.
+It's only an operating system facility that can associate name with addresses,
+and vice versa.
 
-# dns.lookupService(address, port, callback)
+Its implementation can have subtle but important consequences on the behavior
+of any io.js program. Please take some time to consult the [Implementation
+considerations section](#dns_implementation_considerations) before using it.
+
+## dns.lookupService(address, port, callback)
 
 Resolves the given address and port into a hostname and service using
 `getnameinfo`.
@@ -231,3 +269,45 @@ are only returned if the current system has at least one IPv4 address
 configured. Loopback addresses are not considered.
 - `dns.V4MAPPED`: If the IPv6 family was specified, but no IPv6 addresses
 were found, then return IPv4 mapped IPv6 addresses.
+
+## Implementation considerations
+
+Although `dns.lookup` and `dns.resolve*/dns.reverse` functions have the same
+goal of associating a network name with a network address (or vice versa),
+their behavior is quite different. These differences can have subtle but
+significant consequences on the behavior of io.js programs.
+
+### dns.lookup
+
+Under the hood, `dns.lookup` uses the same operating system facilities as most
+other programs. For instance, `dns.lookup` will almost always resolve a given
+name the same way as the `ping` command. On most POSIX-like operating systems,
+the behavior of the `dns.lookup` function can be tweaked by changing settings
+in `nsswitch.conf(5)` and/or `resolv.conf(5)`, but be careful that changing
+these files will change the behavior of all other programs running on the same
+operating system.
+
+Though the call will be asynchronous from JavaScript's perspective, it is
+implemented as a synchronous call to `getaddrinfo(3)` that runs on libuv's
+threadpool. Because libuv's threadpool has a fixed size, it means that if for
+whatever reason the call to `getaddrinfo(3)` takes a long time, other
+operations that could run on libuv's threadpool (such as filesystem
+operations) will experience degraded performance. In order to mitigate this
+issue, one potential solution is to increase the size of libuv's threadpool by
+setting the 'UV_THREADPOOL_SIZE' environment variable to a value greater than
+4 (its current default value). For more information on libuv's threadpool, see
+[the official libuv
+documentation](http://docs.libuv.org/en/latest/threadpool.html).
+
+### dns.resolve, functions starting with dns.resolve and dns.reverse
+
+These functions are implemented quite differently than `dns.lookup`. They do
+not use `getaddrinfo(3)` and they _always_ perform a DNS query on the network.
+This network communication is always done asynchronously, and does not use
+libuv's threadpool.
+
+As a result, these functions cannot have the same negative impact on other
+processing that happens on libuv's threadpool that `dns.lookup` can have.
+
+They do not use the same set of configuration files than what `dns.lookup`
+uses. For instance, _they do not use the configuration from `/etc/hosts`_.

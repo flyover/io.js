@@ -7,7 +7,7 @@
 #include "src/arguments.h"
 #include "src/deoptimizer.h"
 #include "src/full-codegen.h"
-#include "src/runtime/runtime.h"
+#include "src/natives.h"
 #include "src/runtime/runtime-utils.h"
 
 namespace v8 {
@@ -60,8 +60,15 @@ RUNTIME_FUNCTION(Runtime_OptimizeFunctionOnNextCall) {
                  (function->code()->kind() == Code::FUNCTION &&
                   function->code()->optimizable()));
 
-  // If the function is optimized, just return.
+  if (!isolate->use_crankshaft()) return isolate->heap()->undefined_value();
+
+  // If the function is already optimized, just return.
   if (function->IsOptimized()) return isolate->heap()->undefined_value();
+
+  // If the function cannot optimized, just return.
+  if (function->shared()->optimization_disabled()) {
+    return isolate->heap()->undefined_value();
+  }
 
   function->MarkForOptimization();
 
@@ -75,7 +82,7 @@ RUNTIME_FUNCTION(Runtime_OptimizeFunctionOnNextCall) {
           *function, Code::kMaxLoopNestingMarker);
     } else if (type->IsOneByteEqualTo(STATIC_CHAR_VECTOR("concurrent")) &&
                isolate->concurrent_recompilation_enabled()) {
-      function->MarkForConcurrentOptimization();
+      function->AttemptConcurrentOptimization();
     }
   }
 
@@ -87,6 +94,7 @@ RUNTIME_FUNCTION(Runtime_NeverOptimizeFunction) {
   HandleScope scope(isolate);
   DCHECK(args.length() == 1);
   CONVERT_ARG_CHECKED(JSFunction, function, 0);
+  function->shared()->set_disable_optimization_reason(kOptimizationDisabled);
   function->shared()->set_optimization_disabled(true);
   return isolate->heap()->undefined_value();
 }
@@ -163,7 +171,7 @@ RUNTIME_FUNCTION(Runtime_ClearFunctionTypeFeedback) {
 RUNTIME_FUNCTION(Runtime_NotifyContextDisposed) {
   HandleScope scope(isolate);
   DCHECK(args.length() == 0);
-  isolate->heap()->NotifyContextDisposed();
+  isolate->heap()->NotifyContextDisposed(true);
   return isolate->heap()->undefined_value();
 }
 
@@ -215,7 +223,7 @@ RUNTIME_FUNCTION(Runtime_DebugPrint) {
   // ShortPrint is available in release mode. Print is not.
   os << Brief(args[0]);
 #endif
-  os << endl;
+  os << std::endl;
 
   return args[0];  // return TOS
 }
@@ -236,8 +244,7 @@ RUNTIME_FUNCTION(Runtime_GlobalPrint) {
   DCHECK(args.length() == 1);
 
   CONVERT_ARG_CHECKED(String, string, 0);
-  ConsStringIteratorOp op;
-  StringCharacterStream stream(string, &op);
+  StringCharacterStream stream(string);
   while (stream.HasMore()) {
     uint16_t character = stream.GetNext();
     PrintF("%c", character);
@@ -247,7 +254,9 @@ RUNTIME_FUNCTION(Runtime_GlobalPrint) {
 
 
 RUNTIME_FUNCTION(Runtime_SystemBreak) {
-  SealHandleScope shs(isolate);
+  // The code below doesn't create handles, but when breaking here in GDB
+  // having a handle scope might be useful.
+  HandleScope scope(isolate);
   DCHECK(args.length() == 0);
   base::OS::DebugBreak();
   return isolate->heap()->undefined_value();
@@ -292,6 +301,70 @@ RUNTIME_FUNCTION(Runtime_AbortJS) {
 }
 
 
+RUNTIME_FUNCTION(Runtime_NativeScriptsCount) {
+  DCHECK(args.length() == 0);
+  return Smi::FromInt(Natives::GetBuiltinsCount());
+}
+
+
+// Returns V8 version as a string.
+RUNTIME_FUNCTION(Runtime_GetV8Version) {
+  HandleScope scope(isolate);
+  DCHECK(args.length() == 0);
+
+  const char* version_string = v8::V8::GetVersion();
+
+  return *isolate->factory()->NewStringFromAsciiChecked(version_string);
+}
+
+
+static int StackSize(Isolate* isolate) {
+  int n = 0;
+  for (JavaScriptFrameIterator it(isolate); !it.done(); it.Advance()) n++;
+  return n;
+}
+
+
+static void PrintTransition(Isolate* isolate, Object* result) {
+  // indentation
+  {
+    const int nmax = 80;
+    int n = StackSize(isolate);
+    if (n <= nmax)
+      PrintF("%4d:%*s", n, n, "");
+    else
+      PrintF("%4d:%*s", n, nmax, "...");
+  }
+
+  if (result == NULL) {
+    JavaScriptFrame::PrintTop(isolate, stdout, true, false);
+    PrintF(" {\n");
+  } else {
+    // function result
+    PrintF("} -> ");
+    result->ShortPrint();
+    PrintF("\n");
+  }
+}
+
+
+RUNTIME_FUNCTION(Runtime_TraceEnter) {
+  SealHandleScope shs(isolate);
+  DCHECK(args.length() == 0);
+  PrintTransition(isolate, NULL);
+  return isolate->heap()->undefined_value();
+}
+
+
+RUNTIME_FUNCTION(Runtime_TraceExit) {
+  SealHandleScope shs(isolate);
+  DCHECK(args.length() == 1);
+  CONVERT_ARG_CHECKED(Object, obj, 0);
+  PrintTransition(isolate, obj);
+  return obj;  // return TOS
+}
+
+
 RUNTIME_FUNCTION(Runtime_HaveSameMap) {
   SealHandleScope shs(isolate);
   DCHECK(args.length() == 2);
@@ -319,5 +392,27 @@ ELEMENTS_KIND_CHECK_RUNTIME_FUNCTION(ExternalArrayElements)
 ELEMENTS_KIND_CHECK_RUNTIME_FUNCTION(FastProperties)
 
 #undef ELEMENTS_KIND_CHECK_RUNTIME_FUNCTION
+
+
+#define TYPED_ARRAYS_CHECK_RUNTIME_FUNCTION(Type, type, TYPE, ctype, size) \
+  RUNTIME_FUNCTION(Runtime_HasExternal##Type##Elements) {                  \
+    CONVERT_ARG_CHECKED(JSObject, obj, 0);                                 \
+    return isolate->heap()->ToBoolean(obj->HasExternal##Type##Elements()); \
+  }
+
+TYPED_ARRAYS(TYPED_ARRAYS_CHECK_RUNTIME_FUNCTION)
+
+#undef TYPED_ARRAYS_CHECK_RUNTIME_FUNCTION
+
+
+#define FIXED_TYPED_ARRAYS_CHECK_RUNTIME_FUNCTION(Type, type, TYPE, ctype, s) \
+  RUNTIME_FUNCTION(Runtime_HasFixed##Type##Elements) {                        \
+    CONVERT_ARG_CHECKED(JSObject, obj, 0);                                    \
+    return isolate->heap()->ToBoolean(obj->HasFixed##Type##Elements());       \
+  }
+
+TYPED_ARRAYS(FIXED_TYPED_ARRAYS_CHECK_RUNTIME_FUNCTION)
+
+#undef FIXED_TYPED_ARRAYS_CHECK_RUNTIME_FUNCTION
 }
 }  // namespace v8::internal

@@ -1,30 +1,10 @@
-// Copyright Joyent, Inc. and other Node contributors.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the
-// "Software"), to deal in the Software without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Software, and to permit
-// persons to whom the Software is furnished to do so, subject to the
-// following conditions:
-//
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
-// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-// USE OR OTHER DEALINGS IN THE SOFTWARE.
-
 #ifndef SRC_STREAM_WRAP_H_
 #define SRC_STREAM_WRAP_H_
 
 #include "env.h"
 #include "handle_wrap.h"
-#include "req_wrap.h"
+#include "req-wrap.h"
+#include "req-wrap-inl.h"
 #include "string_bytes.h"
 #include "v8.h"
 
@@ -33,15 +13,26 @@ namespace node {
 // Forward declaration
 class StreamWrap;
 
-typedef class ReqWrap<uv_shutdown_t> ShutdownWrap;
+class ShutdownWrap : public ReqWrap<uv_shutdown_t> {
+ public:
+  ShutdownWrap(Environment* env, v8::Local<v8::Object> req_wrap_obj)
+      : ReqWrap(env, req_wrap_obj, AsyncWrap::PROVIDER_SHUTDOWNWRAP) {
+    Wrap(req_wrap_obj, this);
+  }
+
+  static void NewShutdownWrap(const v8::FunctionCallbackInfo<v8::Value>& args) {
+    CHECK(args.IsConstructCall());
+  }
+};
 
 class WriteWrap: public ReqWrap<uv_write_t> {
  public:
   // TODO(trevnorris): WrapWrap inherits from ReqWrap, which I've globbed
   // into the same provider. How should these be broken apart?
   WriteWrap(Environment* env, v8::Local<v8::Object> obj, StreamWrap* wrap)
-      : ReqWrap<uv_write_t>(env, obj),
+      : ReqWrap(env, obj, AsyncWrap::PROVIDER_WRITEWRAP),
         wrap_(wrap) {
+    Wrap(obj, this);
   }
 
   void* operator new(size_t size, char* storage) { return storage; }
@@ -52,6 +43,10 @@ class WriteWrap: public ReqWrap<uv_write_t> {
 
   inline StreamWrap* wrap() const {
     return wrap_;
+  }
+
+  static void NewWriteWrap(const v8::FunctionCallbackInfo<v8::Value>& args) {
+    CHECK(args.IsConstructCall());
   }
 
  private:
@@ -74,7 +69,8 @@ class StreamWrapCallbacks {
 
   virtual ~StreamWrapCallbacks() = default;
 
-  virtual const char* Error();
+  virtual const char* Error() const;
+  virtual void ClearError();
 
   virtual int TryWrite(uv_buf_t** bufs, size_t* count);
 
@@ -104,6 +100,10 @@ class StreamWrapCallbacks {
 
 class StreamWrap : public HandleWrap {
  public:
+  static void Initialize(v8::Handle<v8::Object> target,
+                         v8::Handle<v8::Value> unused,
+                         v8::Handle<v8::Context> context);
+
   void OverrideCallbacks(StreamWrapCallbacks* callbacks, bool gc) {
     StreamWrapCallbacks* old = callbacks_;
     callbacks_ = callbacks;
@@ -157,7 +157,8 @@ class StreamWrap : public HandleWrap {
   StreamWrap(Environment* env,
              v8::Local<v8::Object> object,
              uv_stream_t* stream,
-             AsyncWrap::ProviderType provider);
+             AsyncWrap::ProviderType provider,
+             AsyncWrap* parent = nullptr);
 
   ~StreamWrap() {
     if (!callbacks_gc_ && callbacks_ != &default_callbacks_) {

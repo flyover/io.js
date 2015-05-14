@@ -1,46 +1,65 @@
-// Copyright Joyent, Inc. and other Node contributors.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the
-// "Software"), to deal in the Software without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Software, and to permit
-// persons to whom the Software is furnished to do so, subject to the
-// following conditions:
-//
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
-// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-// USE OR OTHER DEALINGS IN THE SOFTWARE.
-
 var path = require('path');
 var fs = require('fs');
 var assert = require('assert');
 var os = require('os');
+var child_process = require('child_process');
 
 exports.testDir = path.dirname(__filename);
 exports.fixturesDir = path.join(exports.testDir, 'fixtures');
 exports.libDir = path.join(exports.testDir, '../lib');
-exports.tmpDir = path.join(exports.testDir, 'tmp');
+exports.tmpDirName = 'tmp';
 exports.PORT = +process.env.NODE_COMMON_PORT || 12346;
 
-exports.opensslCli = path.join(path.dirname(process.execPath), 'openssl-cli');
+if (process.env.TEST_THREAD_ID) {
+  // Distribute ports in parallel tests
+  if (!process.env.NODE_COMMON_PORT)
+    exports.PORT += +process.env.TEST_THREAD_ID * 100;
+
+  exports.tmpDirName += '.' + process.env.TEST_THREAD_ID;
+}
+exports.tmpDir = path.join(exports.testDir, exports.tmpDirName);
+
+var opensslCli = null;
+
+// opensslCli defined lazily to reduce overhead of spawnSync
+Object.defineProperty(exports, 'opensslCli', {get: function() {
+  if (opensslCli !== null) return opensslCli;
+
+  if (process.config.variables.node_shared_openssl) {
+    // use external command
+    opensslCli = 'openssl';
+  } else {
+    // use command built from sources included in io.js repository
+    opensslCli = path.join(path.dirname(process.execPath), 'openssl-cli');
+  }
+
+  if (process.platform === 'win32') opensslCli += '.exe';
+
+  var openssl_cmd = child_process.spawnSync(opensslCli, ['version']);
+  if (openssl_cmd.status !== 0 || openssl_cmd.error !== undefined) {
+    // openssl command cannot be executed
+    opensslCli = false;
+  }
+  return opensslCli;
+}, enumerable: true });
+
+
 if (process.platform === 'win32') {
   exports.PIPE = '\\\\.\\pipe\\libuv-test';
-  exports.opensslCli += '.exe';
 } else {
   exports.PIPE = exports.tmpDir + '/test.sock';
 }
-if (process.env.NODE_COMMON_PIPE)
+
+if (process.env.NODE_COMMON_PIPE) {
   exports.PIPE = process.env.NODE_COMMON_PIPE;
-if (!fs.existsSync(exports.opensslCli))
-  exports.opensslCli = false;
+  // Remove manually, the test runner won't do it
+  // for us like it does for files in test/tmp.
+  try {
+    fs.unlinkSync(exports.PIPE);
+  } catch (e) {
+    // Ignore.
+  }
+}
 
 if (process.platform === 'win32') {
   exports.faketimeCli = false;
@@ -96,6 +115,17 @@ exports.spawnCat = function(options) {
 };
 
 
+exports.spawnSyncCat = function(options) {
+  var spawnSync = require('child_process').spawnSync;
+
+  if (process.platform === 'win32') {
+    return spawnSync('more', [], options);
+  } else {
+    return spawnSync('cat', [], options);
+  }
+};
+
+
 exports.spawnPwd = function(options) {
   var spawn = require('child_process').spawn;
 
@@ -129,8 +159,6 @@ if (global.DTRACE_HTTP_SERVER_RESPONSE) {
   knownGlobals.push(DTRACE_HTTP_CLIENT_REQUEST);
   knownGlobals.push(DTRACE_NET_STREAM_END);
   knownGlobals.push(DTRACE_NET_SERVER_CONNECTION);
-  knownGlobals.push(DTRACE_NET_SOCKET_READ);
-  knownGlobals.push(DTRACE_NET_SOCKET_WRITE);
 }
 
 if (global.COUNTER_NET_SERVER_CONNECTION) {
@@ -140,6 +168,15 @@ if (global.COUNTER_NET_SERVER_CONNECTION) {
   knownGlobals.push(COUNTER_HTTP_SERVER_RESPONSE);
   knownGlobals.push(COUNTER_HTTP_CLIENT_REQUEST);
   knownGlobals.push(COUNTER_HTTP_CLIENT_RESPONSE);
+}
+
+if (global.LTTNG_HTTP_SERVER_RESPONSE) {
+  knownGlobals.push(LTTNG_HTTP_SERVER_RESPONSE);
+  knownGlobals.push(LTTNG_HTTP_SERVER_REQUEST);
+  knownGlobals.push(LTTNG_HTTP_CLIENT_RESPONSE);
+  knownGlobals.push(LTTNG_HTTP_CLIENT_REQUEST);
+  knownGlobals.push(LTTNG_NET_STREAM_END);
+  knownGlobals.push(LTTNG_NET_SERVER_CONNECTION);
 }
 
 if (global.ArrayBuffer) {
@@ -292,6 +329,14 @@ exports.getServiceName = function getServiceName(port, protocol) {
   return serviceName;
 }
 
+exports.hasMultiLocalhost = function hasMultiLocalhost() {
+  var TCP = process.binding('tcp_wrap').TCP;
+  var t = new TCP();
+  var ret = t.bind('127.0.0.2', exports.PORT);
+  t.close();
+  return ret === 0;
+};
+
 exports.isValidHostname = function(str) {
   // See http://stackoverflow.com/a/3824105
   var re = new RegExp(
@@ -300,3 +345,12 @@ exports.isValidHostname = function(str) {
 
   return !!str.match(re) && str.length <= 255;
 }
+
+exports.fileExists = function(pathname) {
+  try {
+    fs.accessSync(pathname);
+    return true;
+  } catch (err) {
+    return false;
+  }
+};

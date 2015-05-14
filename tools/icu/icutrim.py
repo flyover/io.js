@@ -65,6 +65,12 @@ parser.add_option("-v","--verbose",
                     action="count",
                     default=0)
 
+parser.add_option('-L',"--locales",
+                  action="store",
+                  dest="locales",
+                  help="sets the 'locales.only' variable",
+                  default=None)
+
 parser.add_option('-e', '--endian', action='store', dest='endian', help='endian, big, little or host, your default is "%s".' % endian, default=endian, metavar='endianness')
 
 (options, args) = parser.parse_args()
@@ -147,6 +153,13 @@ fi= open(options.filterfile, "rb")
 config=json.load(fi)
 fi.close()
 
+if (options.locales):
+  if not config.has_key("variables"):
+    config["variables"] = {}
+  if not config["variables"].has_key("locales"):
+    config["variables"]["locales"] = {}
+  config["variables"]["locales"]["only"] = options.locales.split(',')
+
 if (options.verbose > 6):
     print config
 
@@ -154,8 +167,8 @@ if(config.has_key("comment")):
     print "%s: %s" % (options.filterfile, config["comment"])
 
 ## STEP 1 - copy the data file, swapping endianness
-endian_letter = "l"
-
+## The first letter of endian_letter will be 'b' or 'l' for big or little
+endian_letter = options.endian[0]
 
 runcmd("icupkg", "-t%s %s %s""" % (endian_letter, options.datfile, outfile))
 

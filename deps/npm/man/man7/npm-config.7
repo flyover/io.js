@@ -1,4 +1,4 @@
-.TH "NPM\-CONFIG" "7" "September 2014" "" ""
+.TH "NPM\-CONFIG" "7" "February 2015" "" ""
 .SH "NAME"
 \fBnpm-config\fR \- More than you probably want to know about npm configuration
 .SH DESCRIPTION
@@ -70,8 +70,6 @@ The following shorthands are parsed on the command\-line:
 .IP \(bu 2
 \fB\-reg\fR: \fB\-\-registry\fR
 .IP \(bu 2
-\fB\-v\fR: \fB\-\-version\fR
-.IP \(bu 2
 \fB\-f\fR: \fB\-\-force\fR
 .IP \(bu 2
 \fB\-desc\fR: \fB\-\-description\fR
@@ -99,11 +97,11 @@ configuration parameter, then it is expanded to that configuration
 parameter\.  For example:
 .P
 .RS 2
-.EX
+.nf
 npm ls \-\-par
 # same as:
 npm ls \-\-parseable
-.EE
+.fi
 .RE
 .P
 If multiple single\-character shorthands are strung together, and the
@@ -112,11 +110,11 @@ param, then it is expanded to its various component pieces\.  For
 example:
 .P
 .RS 2
-.EX
+.nf
 npm ls \-gpld
 # same as:
 npm ls \-\-global \-\-parseable \-\-long \-\-loglevel info
-.EE
+.fi
 .RE
 .SH Per\-Package Config Settings
 .P
@@ -126,31 +124,44 @@ keys are overwritten in the environment if there is a config param of
 this:
 .P
 .RS 2
-.EX
+.nf
 { "name" : "foo"
 , "config" : { "port" : "8080" }
 , "scripts" : { "start" : "node server\.js" } }
-.EE
+.fi
 .RE
 .P
 and the server\.js is this:
 .P
 .RS 2
-.EX
+.nf
 http\.createServer(\.\.\.)\.listen(process\.env\.npm_package_config_port)
-.EE
+.fi
 .RE
 .P
 then the user could change the behavior by doing:
 .P
 .RS 2
-.EX
+.nf
 npm config set foo:port 80
-.EE
+.fi
 .RE
 .P
 See npm help 5 package\.json for more information\.
 .SH Config Settings
+.SS access
+.RS 0
+.IP \(bu 2
+Default: \fBrestricted\fR
+.IP \(bu 2
+Type: Access
+
+.RE
+.P
+When publishing scoped packages, the access level defaults to \fBrestricted\fR\|\.  If
+you want your scoped package to be publicly viewable (and installable) set
+\fB\-\-access=public\fR\|\. The only valid values for \fBaccess\fR are \fBpublic\fR and
+\fBrestricted\fR\|\. Unscoped packages \fIalways\fR have an access level of \fBpublic\fR\|\.
 .SS always\-auth
 .RS 0
 .IP \(bu 2
@@ -192,15 +203,31 @@ The browser that is called by the \fBnpm docs\fR command to open websites\.
 .IP \(bu 2
 Default: The npm CA certificate
 .IP \(bu 2
-Type: String or null
+Type: String, Array or null
 
 .RE
 .P
 The Certificate Authority signing certificate that is trusted for SSL
-connections to the registry\.
+connections to the registry\. Values should be in PEM format with newlines
+replaced by the string "\\n"\. For example:
+.P
+.RS 2
+.nf
+ca="\-\-\-\-\-BEGIN CERTIFICATE\-\-\-\-\-\\nXXXX\\nXXXX\\n\-\-\-\-\-END CERTIFICATE\-\-\-\-\-"
+.fi
+.RE
 .P
 Set to \fBnull\fR to only allow "known" registrars, or to a specific CA cert
 to trust only that specific signing authority\.
+.P
+Multiple CAs can be trusted by specifying an array of certificates:
+.P
+.RS 2
+.nf
+ca[]="\.\.\."
+ca[]="\.\.\."
+.fi
+.RE
 .P
 See also the \fBstrict\-ssl\fR config\.
 .SS cafile
@@ -504,14 +531,15 @@ The string that starts all the debugging log output\.
 .SS https\-proxy
 .RS 0
 .IP \(bu 2
-Default: the \fBHTTPS_PROXY\fR or \fBhttps_proxy\fR or \fBHTTP_PROXY\fR or
-\fBhttp_proxy\fR environment variables\.
+Default: null
 .IP \(bu 2
 Type: url
 
 .RE
 .P
-A proxy to use for outgoing https requests\.
+A proxy to use for outgoing https requests\. If the \fBHTTPS_PROXY\fR or
+\fBhttps_proxy\fR or \fBHTTP_PROXY\fR or \fBhttp_proxy\fR environment variables are set,
+proxy settings will be honored by the underlying \fBrequest\fR library\.
 .SS ignore\-scripts
 .RS 0
 .IP \(bu 2
@@ -535,7 +563,7 @@ A module that will be loaded by the \fBnpm init\fR command\.  See the
 documentation for the
 init\-package\-json \fIhttps://github\.com/isaacs/init\-package\-json\fR module
 for more information, or npm help init\.
-.SS init\.author\.name
+.SS init\-author\-name
 .RS 0
 .IP \(bu 2
 Default: ""
@@ -545,7 +573,7 @@ Type: String
 .RE
 .P
 The value \fBnpm init\fR should use by default for the package author's name\.
-.SS init\.author\.email
+.SS init\-author\-email
 .RS 0
 .IP \(bu 2
 Default: ""
@@ -555,7 +583,7 @@ Type: String
 .RE
 .P
 The value \fBnpm init\fR should use by default for the package author's email\.
-.SS init\.author\.url
+.SS init\-author\-url
 .RS 0
 .IP \(bu 2
 Default: ""
@@ -565,7 +593,7 @@ Type: String
 .RE
 .P
 The value \fBnpm init\fR should use by default for the package author's homepage\.
-.SS init\.license
+.SS init\-license
 .RS 0
 .IP \(bu 2
 Default: "ISC"
@@ -575,10 +603,10 @@ Type: String
 .RE
 .P
 The value \fBnpm init\fR should use by default for the package license\.
-.SS init\.version
+.SS init\-version
 .RS 0
 .IP \(bu 2
-Default: "0\.0\.0"
+Default: "1\.0\.0"
 .IP \(bu 2
 Type: semver
 
@@ -647,7 +675,7 @@ to the npm registry\.  Must be IPv4 in versions of Node prior to 0\.12\.
 .SS loglevel
 .RS 0
 .IP \(bu 2
-Default: "http"
+Default: "warn"
 .IP \(bu 2
 Type: String
 .IP \(bu 2
@@ -659,7 +687,7 @@ What level of logs to report\.  On failure, \fIall\fR logs are written to
 \fBnpm\-debug\.log\fR in the current working directory\.
 .P
 Any logs of a higher level than the setting are shown\.
-The default is "http", which shows http, warn, and error output\.
+The default is "warn", which shows warn and error output\.
 .SS logstream
 .RS 0
 .IP \(bu 2
@@ -709,7 +737,7 @@ Type: semver or false
 
 .RE
 .P
-The node version to use when checking package's "engines" hash\.
+The node version to use when checking a package's \fBengines\fR map\.
 .SS npat
 .RS 0
 .IP \(bu 2
@@ -740,7 +768,7 @@ Type: Boolean
 
 .RE
 .P
-Attempt to install packages in the \fBoptionalDependencies\fR hash\.  Note
+Attempt to install packages in the \fBoptionalDependencies\fR object\.  Note
 that if these packages fail to install, the overall installation
 process is not aborted\.
 .SS parseable
@@ -801,13 +829,15 @@ this as true\.
 .SS proxy
 .RS 0
 .IP \(bu 2
-Default: \fBHTTP_PROXY\fR or \fBhttp_proxy\fR environment variable, or null
+Default: null
 .IP \(bu 2
 Type: url
 
 .RE
 .P
-A proxy to use for outgoing http requests\.
+A proxy to use for outgoing http requests\. If the \fBHTTP_PROXY\fR or
+\fBhttp_proxy\fR environment variables are set, proxy settings will be
+honored by the underlying \fBrequest\fR library\.
 .SS rebuild\-bundle
 .RS 0
 .IP \(bu 2
@@ -849,8 +879,8 @@ Type: Boolean
 .P
 Save installed packages to a package\.json file as dependencies\.
 .P
-When used with the \fBnpm rm\fR command, it removes it from the dependencies
-hash\.
+When used with the \fBnpm rm\fR command, it removes it from the \fBdependencies\fR
+object\.
 .P
 Only works if there is already a package\.json file present\.
 .SS save\-bundle
@@ -877,10 +907,10 @@ Type: Boolean
 
 .RE
 .P
-Save installed packages to a package\.json file as devDependencies\.
+Save installed packages to a package\.json file as \fBdevDependencies\fR\|\.
 .P
 When used with the \fBnpm rm\fR command, it removes it from the
-devDependencies hash\.
+\fBdevDependencies\fR object\.
 .P
 Only works if there is already a package\.json file present\.
 .SS save\-exact
@@ -908,7 +938,7 @@ Save installed packages to a package\.json file as
 optionalDependencies\.
 .P
 When used with the \fBnpm rm\fR command, it removes it from the
-devDependencies hash\.
+\fBdevDependencies\fR object\.
 .P
 Only works if there is already a package\.json file present\.
 .SS save\-prefix
@@ -923,7 +953,7 @@ Type: String
 Configure how versions of packages installed to a package\.json file via
 \fB\-\-save\fR or \fB\-\-save\-dev\fR get prefixed\.
 .P
-For example if a package has version \fB1\.2\.3\fR, by default it's version is
+For example if a package has version \fB1\.2\.3\fR, by default its version is
 set to \fB^1\.2\.3\fR which allows minor upgrades for that package, but after
 \fBnpm config set save\-prefix='~'\fR it would be set to \fB~1\.2\.3\fR which only allows
 patch upgrades\.
@@ -1122,7 +1152,7 @@ The location of user\-level configuration settings\.
 .IP \(bu 2
 Default: 022
 .IP \(bu 2
-Type: Octal numeric string
+Type: Octal numeric string in range 0000\.\.0777 (0\.\.511)
 
 .RE
 .P
@@ -1163,8 +1193,8 @@ Type: boolean
 
 .RE
 .P
-If true, output the npm version as well as node's \fBprocess\.versions\fR
-hash, and exit successfully\.
+If true, output the npm version as well as node's \fBprocess\.versions\fR map, and
+exit successfully\.
 .P
 Only relevant when specified explicitly on the command line\.
 .SS viewer
@@ -1183,8 +1213,6 @@ Set to \fB"browser"\fR to view html help content in the default web browser\.
 .RS 0
 .IP \(bu 2
 npm help config
-.IP \(bu 2
-npm help 7 config
 .IP \(bu 2
 npm help 5 npmrc
 .IP \(bu 2

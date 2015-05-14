@@ -1,16 +1,18 @@
 
 module.exports = publish
 
-var url = require("url")
-  , npm = require("./npm.js")
+var npm = require("./npm.js")
   , log = require("npmlog")
   , path = require("path")
   , readJson = require("read-package-json")
   , lifecycle = require("./utils/lifecycle.js")
   , chain = require("slide").chain
-  , Conf = require("npmconf").Conf
-  , RegClient = require("npm-registry-client")
+  , Conf = require("./config/core.js").Conf
+  , CachingRegClient = require("./cache/caching-client.js")
   , mapToRegistry = require("./utils/map-to-registry.js")
+  , cachedPackageRoot = require("./cache/cached-package-root.js")
+  , createReadStream = require("graceful-fs").createReadStream
+  , npa = require("npm-package-arg")
 
 publish.usage = "npm publish <tarball>"
               + "\nnpm publish <folder>"
@@ -35,14 +37,18 @@ function publish (args, isRetry, cb) {
   var arg = args[0]
   // if it's a local folder, then run the prepublish there, first.
   readJson(path.resolve(arg, "package.json"), function (er, data) {
-    er = needVersion(er, data)
     if (er && er.code !== "ENOENT" && er.code !== "ENOTDIR") return cb(er)
-    // error is ok.  could be publishing a url or tarball
-    // however, that means that we will not have automatically run
-    // the prepublish script, since that gets run when adding a folder
-    // to the cache.
+
+    if (data) {
+      if (!data.name) return cb(new Error("No name provided"))
+      if (!data.version) return cb(new Error("No version provided"))
+    }
+
+    // Error is OK. Could be publishing a URL or tarball, however, that means
+    // that we will not have automatically run the prepublish script, since
+    // that gets run when adding a folder to the cache.
     if (er) return cacheAddPublish(arg, false, isRetry, cb)
-    cacheAddPublish(arg, true, isRetry, cb)
+    else cacheAddPublish(arg, true, isRetry, cb)
   })
 }
 
@@ -55,10 +61,7 @@ function cacheAddPublish (dir, didPre, isRetry, cb) {
   npm.commands.cache.add(dir, null, null, false, function (er, data) {
     if (er) return cb(er)
     log.silly("publish", data)
-    var cachedir = path.resolve( npm.cache
-                               , data.name
-                               , data.version
-                               , "package" )
+    var cachedir = path.resolve(cachedPackageRoot(data), "package")
     chain([ !didPre &&
           [lifecycle, data, "prepublish", cachedir]
         , [publish_, dir, data, isRetry, cachedir]
@@ -85,10 +88,11 @@ function publish_ (arg, data, isRetry, cachedir, cb) {
       s[k] = data.publishConfig[k]
       return s
     }, {}))
-    registry = new RegClient(config)
+    registry = new CachingRegClient(config)
   }
 
-  data._npmVersion = npm.version
+  data._npmVersion  = npm.version
+  data._nodeVersion = process.versions.node
 
   delete data.modules
   if (data.private) return cb(
@@ -98,21 +102,39 @@ function publish_ (arg, data, isRetry, cachedir, cb) {
     )
   )
 
-  mapToRegistry(data.name, config, function (er, registryURI) {
+  mapToRegistry(data.name, config, function (er, registryURI, auth, registryBase) {
     if (er) return cb(er)
 
-    var tarball = cachedir + ".tgz"
+    var tarballPath = cachedir + ".tgz"
 
     // we just want the base registry URL in this case
-    var registryBase = url.resolve(registryURI, ".")
     log.verbose("publish", "registryBase", registryBase)
+    log.silly("publish", "uploading", tarballPath)
 
-    var c = config.getCredentialsByURI(registryBase)
-    data._npmUser = {name: c.username, email: c.email}
+    data._npmUser = {
+      name  : auth.username,
+      email : auth.email
+    }
 
-    registry.publish(registryBase, data, tarball, function (er) {
-      if (er && er.code === "EPUBLISHCONFLICT"
-          && npm.config.get("force") && !isRetry) {
+    var params = {
+      metadata : data,
+      body     : createReadStream(tarballPath),
+      auth     : auth
+    }
+
+    // registry-frontdoor cares about the access level, which is only
+    // configurable for scoped packages
+    if (config.get("access")) {
+      if (!npa(data.name).scope && config.get("access") === "restricted") {
+        return cb(new Error("Can't restrict access to unscoped packages."))
+      }
+
+      params.access = config.get("access")
+    }
+
+    registry.publish(registryBase, params, function (er) {
+      if (er && er.code === "EPUBLISHCONFLICT" &&
+          npm.config.get("force") && !isRetry) {
         log.warn("publish", "Forced publish over " + data._id)
         return npm.commands.unpublish([data._id], function (er) {
           // ignore errors.  Use the force.  Reach out with your feelings.
@@ -127,10 +149,4 @@ function publish_ (arg, data, isRetry, cachedir, cb) {
       cb()
     })
   })
-}
-
-function needVersion(er, data) {
-  return er ? er
-       : (data && !data.version) ? new Error("No version provided")
-       : null
 }

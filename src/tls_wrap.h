@@ -1,24 +1,3 @@
-// Copyright Joyent, Inc. and other Node contributors.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the
-// "Software"), to deal in the Software without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Software, and to permit
-// persons to whom the Software is furnished to do so, subject to the
-// following conditions:
-//
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
-// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-// USE OR OTHER DEALINGS IN THE SOFTWARE.
-
 #ifndef SRC_TLS_WRAP_H_
 #define SRC_TLS_WRAP_H_
 
@@ -27,8 +6,8 @@
 
 #include "async-wrap.h"
 #include "env.h"
-#include "queue.h"
 #include "stream_wrap.h"
+#include "util.h"
 #include "v8.h"
 
 #include <openssl/ssl.h>
@@ -52,7 +31,8 @@ class TLSCallbacks : public crypto::SSLWrap<TLSCallbacks>,
                          v8::Handle<v8::Value> unused,
                          v8::Handle<v8::Context> context);
 
-  const char* Error() override;
+  const char* Error() const override;
+  void ClearError() override;
   int TryWrite(uv_buf_t** bufs, size_t* count) override;
   int DoWrite(WriteWrap* w,
               uv_buf_t* bufs,
@@ -95,7 +75,7 @@ class TLSCallbacks : public crypto::SSLWrap<TLSCallbacks>,
 
     WriteWrap* w_;
     uv_write_cb cb_;
-    QUEUE member_;
+    ListNode<WriteItem> member_;
   };
 
   TLSCallbacks(Environment* env,
@@ -124,12 +104,10 @@ class TLSCallbacks : public crypto::SSLWrap<TLSCallbacks>,
     }
   }
 
+  // If |msg| is not nullptr, caller is responsible for calling `delete[] *msg`.
   v8::Local<v8::Value> GetSSLError(int status, int* err, const char** msg);
-  const char* PrintErrors();
 
-  static int PrintErrorsCb(const char* str, size_t len, void* arg);
   static void OnClientHelloParseEnd(void* arg);
-
   static void Wrap(const v8::FunctionCallbackInfo<v8::Value>& args);
   static void Receive(const v8::FunctionCallbackInfo<v8::Value>& args);
   static void Start(const v8::FunctionCallbackInfo<v8::Value>& args);
@@ -153,8 +131,9 @@ class TLSCallbacks : public crypto::SSLWrap<TLSCallbacks>,
   uv_write_t write_req_;
   size_t write_size_;
   size_t write_queue_size_;
-  QUEUE write_item_queue_;
-  QUEUE pending_write_items_;
+  typedef ListHead<WriteItem, &WriteItem::member_> WriteItemList;
+  WriteItemList write_item_queue_;
+  WriteItemList pending_write_items_;
   bool started_;
   bool established_;
   bool shutdown_;
@@ -168,9 +147,6 @@ class TLSCallbacks : public crypto::SSLWrap<TLSCallbacks>,
 #ifdef SSL_CTRL_SET_TLSEXT_SERVERNAME_CB
   v8::Persistent<v8::Value> sni_context_;
 #endif  // SSL_CTRL_SET_TLSEXT_SERVERNAME_CB
-
-  static size_t error_off_;
-  static char error_buf_[1024];
 };
 
 }  // namespace node

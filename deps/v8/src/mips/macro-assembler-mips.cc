@@ -23,7 +23,8 @@ namespace internal {
 MacroAssembler::MacroAssembler(Isolate* arg_isolate, void* buffer, int size)
     : Assembler(arg_isolate, buffer, size),
       generating_stub_(false),
-      has_frame_(false) {
+      has_frame_(false),
+      has_double_zero_reg_set_(false) {
   if (isolate() != NULL) {
     code_object_ = Handle<Object>(isolate()->heap()->undefined_value(),
                                   isolate());
@@ -590,11 +591,12 @@ void MacroAssembler::LoadFromNumberDictionary(Label* miss,
   }
 
   bind(&done);
-  // Check that the value is a normal property.
+  // Check that the value is a field property.
   // reg2: elements + (index * kPointerSize).
   const int kDetailsOffset =
       SeededNumberDictionary::kElementsStartOffset + 2 * kPointerSize;
   lw(reg1, FieldMemOperand(reg2, kDetailsOffset));
+  DCHECK_EQ(FIELD, 0);
   And(at, reg1, Operand(Smi::FromInt(PropertyDetails::TypeField::kMask)));
   Branch(miss, ne, at, Operand(zero_reg));
 
@@ -735,6 +737,28 @@ void MacroAssembler::Mult(Register rs, const Operand& rt) {
     DCHECK(!rs.is(at));
     li(at, rt);
     mult(rs, at);
+  }
+}
+
+
+void MacroAssembler::Mulhu(Register rd, Register rs, const Operand& rt) {
+  if (rt.is_reg()) {
+    if (!IsMipsArchVariant(kMips32r6)) {
+      multu(rs, rt.rm());
+      mfhi(rd);
+    } else {
+      muhu(rd, rs, rt.rm());
+    }
+  } else {
+    // li handles the relocation.
+    DCHECK(!rs.is(at));
+    li(at, rt);
+    if (!IsMipsArchVariant(kMips32r6)) {
+      multu(rs, at);
+      mfhi(rd);
+    } else {
+      muhu(rd, rs, at);
+    }
   }
 }
 
@@ -1525,15 +1549,20 @@ void MacroAssembler::BranchF(Label* target,
 }
 
 
+void MacroAssembler::Move(FPURegister dst, float imm) {
+  li(at, Operand(bit_cast<int32_t>(imm)));
+  mtc1(at, dst);
+}
+
+
 void MacroAssembler::Move(FPURegister dst, double imm) {
   static const DoubleRepresentation minus_zero(-0.0);
   static const DoubleRepresentation zero(0.0);
   DoubleRepresentation value_rep(imm);
   // Handle special values first.
-  bool force_load = dst.is(kDoubleRegZero);
-  if (value_rep == zero && !force_load) {
+  if (value_rep == zero && has_double_zero_reg_set_) {
     mov_d(dst, kDoubleRegZero);
-  } else if (value_rep == minus_zero && !force_load) {
+  } else if (value_rep == minus_zero && has_double_zero_reg_set_) {
     neg_d(dst, kDoubleRegZero);
   } else {
     uint32_t lo, hi;
@@ -1554,6 +1583,7 @@ void MacroAssembler::Move(FPURegister dst, double imm) {
     } else {
       Mthc1(zero_reg, dst);
     }
+    if (dst.is(kDoubleRegZero)) has_double_zero_reg_set_ = true;
   }
 }
 
@@ -2014,18 +2044,26 @@ void MacroAssembler::BranchShort(int16_t offset, Condition cond, Register rs,
         b(offset);
         break;
       case eq:
-        // We don't want any other register but scratch clobbered.
-        DCHECK(!scratch.is(rs));
-        r2 = scratch;
-        li(r2, rt);
-        beq(rs, r2, offset);
+        if (rt.imm32_ == 0) {
+          beq(rs, zero_reg, offset);
+        } else {
+          // We don't want any other register but scratch clobbered.
+          DCHECK(!scratch.is(rs));
+          r2 = scratch;
+          li(r2, rt);
+          beq(rs, r2, offset);
+        }
         break;
       case ne:
-        // We don't want any other register but scratch clobbered.
-        DCHECK(!scratch.is(rs));
-        r2 = scratch;
-        li(r2, rt);
-        bne(rs, r2, offset);
+        if (rt.imm32_ == 0) {
+          bne(rs, zero_reg, offset);
+        } else {
+          // We don't want any other register but scratch clobbered.
+          DCHECK(!scratch.is(rs));
+          r2 = scratch;
+          li(r2, rt);
+          bne(rs, r2, offset);
+        }
         break;
       // Signed comparison.
       case greater:
@@ -2267,18 +2305,28 @@ void MacroAssembler::BranchShort(Label* L, Condition cond, Register rs,
         b(offset);
         break;
       case eq:
-        DCHECK(!scratch.is(rs));
-        r2 = scratch;
-        li(r2, rt);
-        offset = shifted_branch_offset(L, false);
-        beq(rs, r2, offset);
+        if (rt.imm32_ == 0) {
+          offset = shifted_branch_offset(L, false);
+          beq(rs, zero_reg, offset);
+        } else {
+          DCHECK(!scratch.is(rs));
+          r2 = scratch;
+          li(r2, rt);
+          offset = shifted_branch_offset(L, false);
+          beq(rs, r2, offset);
+        }
         break;
       case ne:
-        DCHECK(!scratch.is(rs));
-        r2 = scratch;
-        li(r2, rt);
-        offset = shifted_branch_offset(L, false);
-        bne(rs, r2, offset);
+        if (rt.imm32_ == 0) {
+          offset = shifted_branch_offset(L, false);
+          bne(rs, zero_reg, offset);
+        } else {
+          DCHECK(!scratch.is(rs));
+          r2 = scratch;
+          li(r2, rt);
+          offset = shifted_branch_offset(L, false);
+          bne(rs, r2, offset);
+        }
         break;
       // Signed comparison.
       case greater:
@@ -3950,17 +3998,17 @@ void MacroAssembler::CheckMap(Register obj,
 }
 
 
-void MacroAssembler::DispatchMap(Register obj,
-                                 Register scratch,
-                                 Handle<Map> map,
-                                 Handle<Code> success,
-                                 SmiCheckType smi_check_type) {
+void MacroAssembler::DispatchWeakMap(Register obj, Register scratch1,
+                                     Register scratch2, Handle<WeakCell> cell,
+                                     Handle<Code> success,
+                                     SmiCheckType smi_check_type) {
   Label fail;
   if (smi_check_type == DO_SMI_CHECK) {
     JumpIfSmi(obj, &fail);
   }
-  lw(scratch, FieldMemOperand(obj, HeapObject::kMapOffset));
-  Jump(success, RelocInfo::CODE_TARGET, eq, scratch, Operand(map));
+  lw(scratch1, FieldMemOperand(obj, HeapObject::kMapOffset));
+  GetWeakValue(scratch2, cell);
+  Jump(success, RelocInfo::CODE_TARGET, eq, scratch1, Operand(scratch2));
   bind(&fail);
 }
 
@@ -3976,6 +4024,19 @@ void MacroAssembler::CheckMap(Register obj,
   lw(scratch, FieldMemOperand(obj, HeapObject::kMapOffset));
   LoadRoot(at, index);
   Branch(fail, ne, scratch, Operand(at));
+}
+
+
+void MacroAssembler::GetWeakValue(Register value, Handle<WeakCell> cell) {
+  li(value, Operand(cell));
+  lw(value, FieldMemOperand(value, WeakCell::kValueOffset));
+}
+
+
+void MacroAssembler::LoadWeakValue(Register value, Handle<WeakCell> cell,
+                                   Label* miss) {
+  GetWeakValue(value, cell);
+  JumpIfSmi(value, miss);
 }
 
 
@@ -5005,6 +5066,13 @@ void MacroAssembler::Prologue(bool code_pre_aging) {
 }
 
 
+void MacroAssembler::EnterFrame(StackFrame::Type type,
+                                bool load_constant_pool_pointer_reg) {
+  // Out-of-line constant pool not implemented on mips.
+  UNREACHABLE();
+}
+
+
 void MacroAssembler::EnterFrame(StackFrame::Type type) {
   addiu(sp, sp, -5 * kPointerSize);
   li(t8, Operand(Smi::FromInt(type)));
@@ -5734,18 +5802,6 @@ void MacroAssembler::CheckPageFlag(
   lw(scratch, MemOperand(scratch, MemoryChunk::kFlagsOffset));
   And(scratch, scratch, Operand(mask));
   Branch(condition_met, cc, scratch, Operand(zero_reg));
-}
-
-
-void MacroAssembler::CheckMapDeprecated(Handle<Map> map,
-                                        Register scratch,
-                                        Label* if_deprecated) {
-  if (map->CanBeDeprecated()) {
-    li(scratch, Operand(map));
-    lw(scratch, FieldMemOperand(scratch, Map::kBitField3Offset));
-    And(scratch, scratch, Operand(Map::Deprecated::kMask));
-    Branch(if_deprecated, ne, scratch, Operand(zero_reg));
-  }
 }
 
 

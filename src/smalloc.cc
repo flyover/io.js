@@ -1,24 +1,3 @@
-// Copyright Joyent, Inc. and other Node contributors.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the
-// "Software"), to deal in the Software without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Software, and to permit
-// persons to whom the Software is furnished to do so, subject to the
-// following conditions:
-//
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
-// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-// USE OR OTHER DEALINGS IN THE SOFTWARE.
-
 #include "smalloc.h"
 
 #include "env.h"
@@ -131,7 +110,7 @@ void CallbackInfo::WeakCallback(Isolate* isolate, Local<Object> object) {
       object->GetIndexedPropertiesExternalArrayDataType();
   size_t array_size = ExternalArraySize(array_type);
   CHECK_GT(array_size, 0);
-  if (array_size > 1) {
+  if (array_size > 1 && array_data != NULL) {
     CHECK_GT(array_length * array_size, array_length);  // Overflow check.
     array_length *= array_size;
   }
@@ -205,7 +184,7 @@ void CopyOnto(const FunctionCallbackInfo<Value>& args) {
   size_t dest_size = ExternalArraySize(dest_type);
 
   // optimization for Uint8 arrays (i.e. Buffers)
-  if (source_size != 1 && dest_size != 1) {
+  if (source_size != 1 || dest_size != 1) {
     if (source_size == 0)
       return env->ThrowTypeError("unknown source external array type");
     if (dest_size == 0)
@@ -440,6 +419,9 @@ bool HasExternalData(Environment* env, Local<Object> obj) {
   return obj->HasIndexedPropertiesInExternalArrayData();
 }
 
+void IsTypedArray(const FunctionCallbackInfo<Value>& args) {
+  args.GetReturnValue().Set(args[0]->IsTypedArray());
+}
 
 void AllocTruncate(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
@@ -490,7 +472,7 @@ const char RetainedAllocInfo::label_[] = "smalloc";
 
 
 RetainedAllocInfo::RetainedAllocInfo(Handle<Value> wrapper) {
-  Local<Object> obj = wrapper->ToObject();
+  Local<Object> obj = wrapper.As<Object>();
   length_ = obj->GetIndexedPropertiesExternalArrayDataLength();
   data_ = static_cast<char*>(obj->GetIndexedPropertiesExternalArrayData());
 }
@@ -540,6 +522,7 @@ void Initialize(Handle<Object> exports,
   env->SetMethod(exports, "truncate", AllocTruncate);
 
   env->SetMethod(exports, "hasExternalData", HasExternalData);
+  env->SetMethod(exports, "isTypedArray", IsTypedArray);
 
   exports->Set(FIXED_ONE_BYTE_STRING(env->isolate(), "kMaxLength"),
                Uint32::NewFromUnsigned(env->isolate(), kMaxLength));

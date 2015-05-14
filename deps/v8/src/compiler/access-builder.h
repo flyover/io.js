@@ -34,6 +34,18 @@ class AccessBuilder FINAL : public AllStatic {
   // Provides access to ExternalArray::external_pointer() field.
   static FieldAccess ForExternalArrayPointer();
 
+  // Provides access to Map::instance_type() field.
+  static FieldAccess ForMapInstanceType();
+
+  // Provides access to String::length() field.
+  static FieldAccess ForStringLength();
+
+  // Provides access to JSValue::value() field.
+  static FieldAccess ForValue();
+
+  // Provides access Context slots.
+  static FieldAccess ForContextSlot(size_t index);
+
   // Provides access to FixedArray elements.
   static ElementAccess ForFixedArrayElement();
 

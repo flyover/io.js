@@ -9,12 +9,14 @@ tags
 *.pyc
 doc/api.xml
 tmp/
-node
-node_g
+test/tmp*/
+iojs
+iojs_g
 *.swp
 .benchmark_reports
 /.project
 /.cproject
+icu_config.gypi
 
 /out
 
@@ -27,6 +29,7 @@ Release/
 *.suo
 *.vcproj
 *.vcxproj
+!custom_actions.vcxproj
 *.vcxproj.user
 *.vcxproj.filters
 UpgradeLog*.XML
@@ -42,10 +45,14 @@ ipch/
 /dist-osx
 /npm.wxs
 /tools/msvs/npm.wixobj
+/tools/osx-pkg.pmdoc/index.xml
 /test/addons/doc-*/
 email.md
 deps/v8-*
 deps/icu
+deps/icu*.zip
+deps/icu*.tgz
+deps/icu-tmp
 ./node_modules
 .svn/
 
@@ -61,7 +68,7 @@ deps/openssl/openssl.target.mk
 deps/zlib/zlib.target.mk
 
 # build/release artifacts
-/*.tar.gz
+/*.tar.*
 /SHASUMS*.txt*
 
 /tools/wrk/wrk

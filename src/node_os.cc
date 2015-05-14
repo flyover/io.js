@@ -1,25 +1,3 @@
-// Copyright Joyent, Inc. and other Node contributors.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the
-// "Software"), to deal in the Software without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Software, and to permit
-// persons to whom the Software is furnished to do so, subject to the
-// following conditions:
-//
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
-// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-// USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-
 #include "node.h"
 #include "v8.h"
 #include "env.h"
@@ -48,6 +26,7 @@ namespace node {
 namespace os {
 
 using v8::Array;
+using v8::Boolean;
 using v8::Context;
 using v8::FunctionCallbackInfo;
 using v8::Handle;
@@ -57,13 +36,6 @@ using v8::Number;
 using v8::Object;
 using v8::String;
 using v8::Value;
-
-
-static void GetEndianness(const FunctionCallbackInfo<Value>& args) {
-  Environment* env = Environment::GetCurrent(args);
-  const char* rval = IsBigEndian() ? "BE" : "LE";
-  args.GetReturnValue().Set(OneByteString(env->isolate(), rval));
-}
 
 
 static void GetHostname(const FunctionCallbackInfo<Value>& args) {
@@ -112,12 +84,15 @@ static void GetOSRelease(const FunctionCallbackInfo<Value>& args) {
     return env->ThrowErrnoException(errno, "uname");
   }
   rval = info.release;
-#else  // __MINGW32__
+#else  // Windows
   char release[256];
-  OSVERSIONINFO info;
+  OSVERSIONINFOW info;
 
   info.dwOSVersionInfoSize = sizeof(info);
-  if (GetVersionEx(&info) == 0)
+
+  // Don't complain that GetVersionEx is deprecated; there is no alternative.
+  #pragma warning(suppress : 4996)
+  if (GetVersionExW(&info) == 0)
     return;
 
   snprintf(release,
@@ -231,7 +206,17 @@ static void GetInterfaceAddresses(const FunctionCallbackInfo<Value>& args) {
   }
 
   for (i = 0; i < count; i++) {
-    name = OneByteString(env->isolate(), interfaces[i].name);
+    const char* const raw_name = interfaces[i].name;
+
+    // On Windows, the interface name is the UTF8-encoded friendly name and may
+    // contain non-ASCII characters.  On UNIX, it's just a binary string with
+    // no particular encoding but we treat it as a one-byte Latin-1 string.
+#ifdef _WIN32
+    name = String::NewFromUtf8(env->isolate(), raw_name);
+#else
+    name = OneByteString(env->isolate(), raw_name);
+#endif
+
     if (ret->Has(name)) {
       ifarr = Local<Array>::Cast(ret->Get(name));
     } else {
@@ -290,7 +275,6 @@ void Initialize(Handle<Object> target,
                 Handle<Value> unused,
                 Handle<Context> context) {
   Environment* env = Environment::GetCurrent(context);
-  env->SetMethod(target, "getEndianness", GetEndianness);
   env->SetMethod(target, "getHostname", GetHostname);
   env->SetMethod(target, "getLoadAvg", GetLoadAvg);
   env->SetMethod(target, "getUptime", GetUptime);
@@ -300,6 +284,8 @@ void Initialize(Handle<Object> target,
   env->SetMethod(target, "getOSType", GetOSType);
   env->SetMethod(target, "getOSRelease", GetOSRelease);
   env->SetMethod(target, "getInterfaceAddresses", GetInterfaceAddresses);
+  target->Set(FIXED_ONE_BYTE_STRING(env->isolate(), "isBigEndian"),
+              Boolean::New(env->isolate(), IsBigEndian()));
 }
 
 }  // namespace os

@@ -29,7 +29,7 @@ Here is the synchronous version:
 
     var fs = require('fs');
 
-    fs.unlinkSync('/tmp/hello')
+    fs.unlinkSync('/tmp/hello');
     console.log('successfully deleted /tmp/hello');
 
 With the asynchronous methods there is no guaranteed ordering. So the
@@ -72,7 +72,7 @@ site, set the NODE_DEBUG environment variable:
     }
     bad();
 
-    $ env NODE_DEBUG=fs node script.js
+    $ env NODE_DEBUG=fs iojs script.js
     fs.js:66
             throw err;
                   ^
@@ -208,7 +208,7 @@ the completion callback.
 
 Synchronous link(2).
 
-## fs.symlink(srcpath, dstpath[, type], callback)
+## fs.symlink(destination, path[, type], callback)
 
 Asynchronous symlink(2). No arguments other than a possible exception are given
 to the completion callback.
@@ -217,7 +217,7 @@ is `'file'`) and is only available on Windows (ignored on other platforms).
 Note that Windows junction points require the destination path to be absolute.  When using
 `'junction'`, the `destination` argument will automatically be normalized to absolute path.
 
-## fs.symlinkSync(srcpath, dstpath[, type])
+## fs.symlinkSync(destination, path[, type])
 
 Synchronous symlink(2).
 
@@ -270,7 +270,7 @@ Synchronous rmdir(2).
 ## fs.mkdir(path[, mode], callback)
 
 Asynchronous mkdir(2). No arguments other than a possible exception are given
-to the completion callback. `mode` defaults to `0777`.
+to the completion callback. `mode` defaults to `0o777`.
 
 ## fs.mkdirSync(path[, mode])
 
@@ -486,7 +486,7 @@ string. Otherwise it returns a buffer.
 * `data` {String | Buffer}
 * `options` {Object}
   * `encoding` {String | Null} default = `'utf8'`
-  * `mode` {Number} default = `438` (aka `0666` in Octal)
+  * `mode` {Number} default = `0o666`
   * `flag` {String} default = `'w'`
 * `callback` {Function}
 
@@ -498,7 +498,7 @@ to `'utf8'`.
 
 Example:
 
-    fs.writeFile('message.txt', 'Hello Node', function (err) {
+    fs.writeFile('message.txt', 'Hello io.js', function (err) {
       if (err) throw err;
       console.log('It\'s saved!');
     });
@@ -513,11 +513,11 @@ The synchronous version of `fs.writeFile`.
 * `data` {String | Buffer}
 * `options` {Object}
   * `encoding` {String | Null} default = `'utf8'`
-  * `mode` {Number} default = `438` (aka `0666` in Octal)
+  * `mode` {Number} default = `0o666`
   * `flag` {String} default = `'a'`
 * `callback` {Function}
 
-Asynchronously append data to a file, creating the file if it not yet exists.
+Asynchronously append data to a file, creating the file if it does not yet exist.
 `data` can be a string or a buffer.
 
 Example:
@@ -656,9 +656,42 @@ that leaves you vulnerable to race conditions: another process may remove the
 file between the calls to `fs.exists()` and `fs.open()`.  Just open the file
 and handle the error when it's not there.
 
+`fs.exists()` is **deprecated**.
+
 ## fs.existsSync(path)
 
 Synchronous version of `fs.exists`.
+
+`fs.existsSync()` is **deprecated**.
+
+## fs.access(path[, mode], callback)
+
+Tests a user's permissions for the file specified by `path`. `mode` is an
+optional integer that specifies the accessibility checks to be performed. The
+following constants define the possible values of `mode`. It is possible to
+create a mask consisting of the bitwise OR of two or more values.
+
+- `fs.F_OK` - File is visible to the calling process. This is useful for
+determining if a file exists, but says nothing about `rwx` permissions.
+Default if no `mode` is specified.
+- `fs.R_OK` - File can be read by the calling process.
+- `fs.W_OK` - File can be written by the calling process.
+- `fs.X_OK` - File can be executed by the calling process. This has no effect
+on Windows (will behave like `fs.F_OK`).
+
+The final argument, `callback`, is a callback function that is invoked with
+a possible error argument. If any of the accessibility checks fail, the error
+argument will be populated. The following example checks if the file
+`/etc/passwd` can be read and written by the current process.
+
+    fs.access('/etc/passwd', fs.R_OK | fs.W_OK, function(err) {
+      util.debug(err ? 'no access!' : 'can read/write');
+    });
+
+## fs.accessSync(path[, mode])
+
+Synchronous version of `fs.access`. This throws if any accessibility checks
+fail, and does nothing otherwise.
 
 ## Class: fs.Stats
 
@@ -724,7 +757,7 @@ The times in the stat object have the following semantics:
   an earlier value than the current `birthtime` using the `utimes(2)`
   system call.
 
-Prior to Node v0.12, the `ctime` held the `birthtime` on Windows
+Prior to io.js v1.0 and Node v0.12, the `ctime` held the `birthtime` on Windows
 systems.  Note that as of v0.12, `ctime` is not "creation time", and
 on Unix systems, it never was.
 
@@ -737,13 +770,16 @@ Returns a new ReadStream object (See `Readable Stream`).
     { flags: 'r',
       encoding: null,
       fd: null,
-      mode: 0666,
+      mode: 0o666,
       autoClose: true
     }
 
 `options` can include `start` and `end` values to read a range of bytes from
 the file instead of the entire file.  Both `start` and `end` are inclusive and
 start at 0. The `encoding` can be `'utf8'`, `'ascii'`, or `'base64'`.
+
+If `fd` is specified, `ReadStream` will ignore the `path` argument and will use
+the specified file descriptor. This means that no `open` event will be emitted.
 
 If `autoClose` is false, then the file descriptor won't be closed, even if
 there's an error.  It is your responsibility to close it and make sure
@@ -775,12 +811,18 @@ Returns a new WriteStream object (See `Writable Stream`).
 
     { flags: 'w',
       encoding: null,
-      mode: 0666 }
+      fd: null,
+      mode: 0o666 }
 
 `options` may also include a `start` option to allow writing data at
 some position past the beginning of the file.  Modifying a file rather
 than replacing it may require a `flags` mode of `r+` rather than the
 default mode `w`.
+
+Like `ReadStream` above, if `fd` is specified, `WriteStream` will ignore the
+`path` argument and will use the specified file descriptor. This means that no
+`open` event will be emitted.
+
 
 ## Class: fs.WriteStream
 

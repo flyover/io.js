@@ -4,7 +4,7 @@
 
 <!--type=module-->
 
-Many objects in Node emit events: a `net.Server` emits an event each time
+Many objects in io.js emit events: a `net.Server` emits an event each time
 a peer connects to it, a `fs.readStream` emits an event when the file is
 opened. All objects which emit events are instances of `events.EventEmitter`.
 You can access this module by doing: `require("events");`
@@ -23,9 +23,9 @@ attached to.
 To access the EventEmitter class, `require('events').EventEmitter`.
 
 When an `EventEmitter` instance experiences an error, the typical action is
-to emit an `'error'` event.  Error events are treated as a special case in node.
-If there is no listener for it, then the default action is to print a stack
-trace and exit the program.
+to emit an `'error'` event.  Error events are treated as a special case in
+io.js.  If there is no listener for it, then the default action is to print
+a stack trace and exit the program.
 
 All EventEmitters emit the event `'newListener'` when new listeners are
 added and `'removeListener'` when a listener is removed.
@@ -33,7 +33,10 @@ added and `'removeListener'` when a listener is removed.
 ### emitter.addListener(event, listener)
 ### emitter.on(event, listener)
 
-Adds a listener to the end of the listeners array for the specified event.
+Adds a listener to the end of the listeners array for the specified `event`.
+No checks are made to see if the `listener` has already been added. Multiple
+calls passing the same combination of `event` and `listener` will result in the
+`listener` being added multiple times.
 
     server.on('connection', function (stream) {
       console.log('someone connected!');
@@ -65,6 +68,11 @@ Remove a listener from the listener array for the specified event.
     // ...
     server.removeListener('connection', callback);
 
+`removeListener` will remove, at most, one instance of a listener from the
+listener array. If any single listener has been added multiple times to the
+listener array for the specified `event`, then `removeListener` must be called
+multiple times to remove each instance.
+
 Returns emitter, so calls can be chained.
 
 ### emitter.removeAllListeners([event])
@@ -83,6 +91,20 @@ memory leaks. Obviously not all Emitters should be limited to 10. This function
 allows that to be increased. Set to zero for unlimited.
 
 Returns emitter, so calls can be chained.
+
+### emitter.getMaxListeners()
+
+Returns the current max listener value for the emitter which is either set by
+`emitter.setMaxListeners(n)` or defaults to `EventEmitter.defaultMaxListeners`.
+
+This can be useful to increment/decrement max listeners to avoid the warning
+while not being irresponsible and setting a too big number.
+
+    emitter.setMaxListeners(emitter.getMaxListeners() + 1);
+    emitter.once('event', function () {
+      // do stuff
+      emitter.setMaxListeners(Math.max(emitter.getMaxListeners() - 1, 0));
+    });
 
 ### EventEmitter.defaultMaxListeners
 
@@ -121,8 +143,11 @@ Return the number of listeners for a given event.
 * `event` {String} The event name
 * `listener` {Function} The event handler function
 
-This event is emitted any time someone adds a new listener.  It is unspecified
-if `listener` is in the list returned by `emitter.listeners(event)`.
+This event is emitted *before* a listener is added. When this event is
+triggered, the listener has not been added to the array of listeners for the
+`event`. Any listeners added to the event `name` in the newListener event
+callback will be added *before* the listener that is in the process of being
+added.
 
 
 ### Event: 'removeListener'
@@ -130,5 +155,6 @@ if `listener` is in the list returned by `emitter.listeners(event)`.
 * `event` {String} The event name
 * `listener` {Function} The event handler function
 
-This event is emitted any time someone removes a listener.  It is unspecified
-if `listener` is in the list returned by `emitter.listeners(event)`.
+This event is emitted *after* a listener is removed.  When this event is
+triggered, the listener has been removed from the array of listeners for the
+`event`.

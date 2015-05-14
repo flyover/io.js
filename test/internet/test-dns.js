@@ -1,24 +1,3 @@
-// Copyright Joyent, Inc. and other Node contributors.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the
-// "Software"), to deal in the Software without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Software, and to permit
-// persons to whom the Software is furnished to do so, subject to the
-// following conditions:
-//
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
-// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-// USE OR OTHER DEALINGS IN THE SOFTWARE.
-
 var common = require('../common');
 var assert = require('assert'),
     dns = require('dns'),
@@ -247,34 +226,34 @@ TEST(function test_resolveNaptr(done) {
 TEST(function test_resolveSoa(done) {
   var req = dns.resolveSoa('nodejs.org', function(err, result) {
     if (err) throw err;
-    
+
     assert.ok(result);
     assert.ok(typeof result === 'object');
-    
+
     assert.ok(typeof result.nsname === 'string');
     assert.ok(result.nsname.length > 0);
-    
+
     assert.ok(typeof result.hostmaster === 'string');
     assert.ok(result.hostmaster.length > 0);
-    
+
     assert.ok(typeof result.serial === 'number');
     assert.ok((result.serial > 0) && (result.serial < 4294967295));
-    
+
     assert.ok(typeof result.refresh === 'number');
-    assert.ok((result.refresh > 0) && (result.refresh < 2147483647)); 
-    
+    assert.ok((result.refresh > 0) && (result.refresh < 2147483647));
+
     assert.ok(typeof result.retry === 'number');
     assert.ok((result.retry > 0) && (result.retry < 2147483647));
-    
+
     assert.ok(typeof result.expire === 'number');
     assert.ok((result.expire > 0) && (result.expire < 2147483647));
-    
+
     assert.ok(typeof result.minttl === 'number');
     assert.ok((result.minttl >= 0) && (result.minttl < 2147483647));
 
     done();
   });
-  
+
   checkWrap(req);
 });
 
@@ -492,6 +471,92 @@ TEST(function test_lookup_localhost_ipv4(done) {
 });
 
 
+TEST(function test_lookup_ip_all(done) {
+  var req = dns.lookup('127.0.0.1', {all: true}, function(err, ips, family) {
+    if (err) throw err;
+    assert.ok(Array.isArray(ips));
+    assert.ok(ips.length > 0);
+    assert.strictEqual(ips[0].address, '127.0.0.1');
+    assert.strictEqual(ips[0].family, 4);
+
+    done();
+  });
+
+  checkWrap(req);
+});
+
+
+TEST(function test_lookup_null_all(done) {
+  var req = dns.lookup(null, {all: true}, function(err, ips, family) {
+    if (err) throw err;
+    assert.ok(Array.isArray(ips));
+    assert.strictEqual(ips.length, 0);
+
+    done();
+  });
+
+  checkWrap(req);
+});
+
+
+TEST(function test_lookup_all_ipv4(done) {
+  var req = dns.lookup('www.google.com', {all: true, family: 4}, function(err, ips) {
+    if (err) throw err;
+    assert.ok(Array.isArray(ips));
+    assert.ok(ips.length > 0);
+
+    ips.forEach(function(ip) {
+      assert.ok(isIPv4(ip.address));
+      assert.strictEqual(ip.family, 4);
+    });
+
+    done();
+  });
+
+  checkWrap(req);
+});
+
+
+TEST(function test_lookup_all_ipv6(done) {
+  var req = dns.lookup('www.google.com', {all: true, family: 6}, function(err, ips) {
+    if (err) throw err;
+    assert.ok(Array.isArray(ips));
+    assert.ok(ips.length > 0);
+
+    ips.forEach(function(ip) {
+      assert.ok(isIPv6(ip.address));
+      assert.strictEqual(ip.family, 6);
+    });
+
+    done();
+  });
+
+  checkWrap(req);
+});
+
+
+TEST(function test_lookup_all_mixed(done) {
+  var req = dns.lookup('www.google.com', {all: true}, function(err, ips) {
+    if (err) throw err;
+    assert.ok(Array.isArray(ips));
+    assert.ok(ips.length > 0);
+
+    ips.forEach(function(ip) {
+      if (isIPv4(ip.address))
+        assert.equal(ip.family, 4);
+      else if (isIPv6(ip.address))
+        assert.equal(ip.family, 6);
+      else
+        assert(false);
+    });
+
+    done();
+  });
+
+  checkWrap(req);
+});
+
+
 TEST(function test_lookupservice_ip_ipv4(done) {
   var req = dns.lookupService('127.0.0.1', 80, function(err, host, service) {
     if (err) throw err;
@@ -632,8 +697,9 @@ var getaddrinfoCallbackCalled = false;
 
 console.log('looking up nodejs.org...');
 
-var req = {};
-var err = process.binding('cares_wrap').getaddrinfo(req, 'nodejs.org', 4);
+var cares = process.binding('cares_wrap');
+var req = new cares.GetAddrInfoReqWrap();
+var err = cares.getaddrinfo(req, 'nodejs.org', 4);
 
 req.oncomplete = function(err, domains) {
   assert.strictEqual(err, 0);

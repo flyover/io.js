@@ -34,8 +34,8 @@ import urllib2
 
 from common_includes import *
 
-PUSH_MESSAGE_SUFFIX = " (based on bleeding_edge revision r%d)"
-PUSH_MESSAGE_RE = re.compile(r".* \(based on bleeding_edge revision r(\d+)\)$")
+PUSH_MSG_GIT_SUFFIX = " (based on %s)"
+PUSH_MSG_GIT_RE = re.compile(r".* \(based on (?P<git_rev>[a-fA-F0-9]+)\)$")
 
 class Preparation(Step):
   MESSAGE = "Preparation."
@@ -65,7 +65,7 @@ class PreparePushRevision(Step):
 
   def RunStep(self):
     if self._options.revision:
-      self["push_hash"] = self.vc.SvnGit(self._options.revision)
+      self["push_hash"] = self._options.revision
     else:
       self["push_hash"] = self.GitLog(n=1, format="%H", git_hash="HEAD")
     if not self["push_hash"]:  # pragma: no cover
@@ -92,16 +92,14 @@ class DetectLastPush(Step):
       # Retrieve the bleeding edge revision of the last push from the text in
       # the push commit message.
       last_push_title = self.GitLog(n=1, format="%s", git_hash=last_push)
-      last_push_be_svn = PUSH_MESSAGE_RE.match(last_push_title).group(1)
-      if not last_push_be_svn:  # pragma: no cover
-        self.Die("Could not retrieve bleeding edge revision for trunk push %s"
-                 % last_push)
-      last_push_bleeding_edge = self.vc.SvnGit(last_push_be_svn)
+      last_push_bleeding_edge = PUSH_MSG_GIT_RE.match(
+          last_push_title).group("git_rev")
+
       if not last_push_bleeding_edge:  # pragma: no cover
         self.Die("Could not retrieve bleeding edge git hash for trunk push %s"
                  % last_push)
 
-    # This points to the svn revision of the last push on trunk.
+    # This points to the git hash of the last push on trunk.
     self["last_push_trunk"] = last_push
     # This points to the last bleeding_edge revision that went into the last
     # push.
@@ -270,10 +268,8 @@ class SquashCommits(Step):
     # Remove date and trailing white space.
     text = re.sub(r"^%s: " % self["date"], "", text.rstrip())
 
-    # Retrieve svn revision for showing the used bleeding edge revision in the
-    # commit message.
-    self["svn_revision"] = self.vc.GitSvn(self["push_hash"])
-    suffix = PUSH_MESSAGE_SUFFIX % int(self["svn_revision"])
+    # Show the used master hash in the commit message.
+    suffix = PUSH_MSG_GIT_SUFFIX % self["push_hash"]
     text = MSub(r"^(Version \d+\.\d+\.\d+)$", "\\1%s" % suffix, text)
 
     # Remove indentation and merge paragraphs into single long lines, keeping
@@ -285,6 +281,7 @@ class SquashCommits(Step):
 
     if not text:  # pragma: no cover
       self.Die("Commit message editing failed.")
+    self["commit_title"] = text.splitlines()[0]
     TextToFile(text, self.Config("COMMITMSG_FILE"))
 
 
@@ -311,12 +308,11 @@ class AddChangeLog(Step):
     # The change log has been modified by the patch. Reset it to the version
     # on trunk and apply the exact changes determined by this PrepareChangeLog
     # step above.
-    self.GitCheckoutFile(self.Config("CHANGELOG_FILE"),
-                         self.vc.RemoteCandidateBranch())
+    self.GitCheckoutFile(CHANGELOG_FILE, self.vc.RemoteCandidateBranch())
     changelog_entry = FileToText(self.Config("CHANGELOG_ENTRY_FILE"))
-    old_change_log = FileToText(self.Config("CHANGELOG_FILE"))
+    old_change_log = FileToText(os.path.join(self.default_cwd, CHANGELOG_FILE))
     new_change_log = "%s\n\n\n%s" % (changelog_entry, old_change_log)
-    TextToFile(new_change_log, self.Config("CHANGELOG_FILE"))
+    TextToFile(new_change_log, os.path.join(self.default_cwd, CHANGELOG_FILE))
     os.remove(self.Config("CHANGELOG_ENTRY_FILE"))
 
 
@@ -350,18 +346,19 @@ class SanityCheck(Step):
       self.Die("Execution canceled.")  # pragma: no cover
 
 
-class CommitSVN(Step):
-  MESSAGE = "Commit to SVN."
+class Land(Step):
+  MESSAGE = "Land the patch."
 
   def RunStep(self):
-    result = self.vc.Land()
+    self.vc.CLLand()
 
 
 class TagRevision(Step):
   MESSAGE = "Tag the new revision."
 
   def RunStep(self):
-    self.vc.Tag(self["version"])
+    self.vc.Tag(
+        self["version"], self.vc.RemoteCandidateBranch(), self["commit_title"])
 
 
 class CleanUp(Step):
@@ -393,7 +390,7 @@ class PushToTrunk(ScriptsBase):
     parser.add_argument("-l", "--last-push",
                         help="The git commit ID of the last push to trunk.")
     parser.add_argument("-R", "--revision",
-                        help="The svn revision to push (defaults to HEAD).")
+                        help="The git commit ID to push (defaults to HEAD).")
 
   def _ProcessOptions(self, options):  # pragma: no cover
     if not options.manual and not options.reviewer:
@@ -401,10 +398,6 @@ class PushToTrunk(ScriptsBase):
       return False
     if not options.manual and not options.author:
       print "Specify your chromium.org email with -a in (semi-)automatic mode."
-      return False
-    if options.revision and not int(options.revision) > 0:
-      print("The --revision flag must be a positiv integer pointing to a "
-            "valid svn revision.")
       return False
 
     options.tbr_commit = not options.manual
@@ -415,7 +408,6 @@ class PushToTrunk(ScriptsBase):
       "BRANCHNAME": "prepare-push",
       "TRUNKBRANCH": "trunk-push",
       "PERSISTFILE_BASENAME": "/tmp/v8-push-to-trunk-tempfile",
-      "CHANGELOG_FILE": "ChangeLog",
       "CHANGELOG_ENTRY_FILE": "/tmp/v8-push-to-trunk-tempfile-changelog-entry",
       "PATCH_FILE": "/tmp/v8-push-to-trunk-tempfile-patch-file",
       "COMMITMSG_FILE": "/tmp/v8-push-to-trunk-tempfile-commitmsg",
@@ -439,7 +431,7 @@ class PushToTrunk(ScriptsBase):
       SetVersion,
       CommitTrunk,
       SanityCheck,
-      CommitSVN,
+      Land,
       TagRevision,
       CleanUp,
     ]

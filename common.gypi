@@ -9,8 +9,6 @@
     'library%': 'static_library',     # allow override to 'shared_library' for DLL/.so builds
     'component%': 'static_library',   # NB. these names match with what V8 expects
     'msvs_multi_core_compile': '0',   # we do enable multicore compiles, but not using the V8 way
-    'gcc_version%': 'unknown',
-    'clang%': 0,
     'python%': 'python',
 
     'node_tag%': '',
@@ -22,14 +20,16 @@
     # Enable disassembler for `--print-code` v8 options
     'v8_enable_disassembler': 1,
 
-    # Enable V8's post-mortem debugging only on unix flavors.
+    # Don't bake anything extra into the snapshot.
+    'v8_use_external_startup_data%': 0,
+
     'conditions': [
       ['OS == "win"', {
         'os_posix': 0,
-        'v8_postmortem_support': 'false'
+        'v8_postmortem_support%': 'false',
       }, {
         'os_posix': 1,
-        'v8_postmortem_support': 'true'
+        'v8_postmortem_support%': 'true',
       }],
       ['GENERATOR == "ninja" or OS== "mac"', {
         'OBJ_DIR': '<(PRODUCT_DIR)/obj',
@@ -37,6 +37,11 @@
       }, {
         'OBJ_DIR': '<(PRODUCT_DIR)/obj.target',
         'V8_BASE': '<(PRODUCT_DIR)/obj.target/deps/v8/tools/gyp/libv8_base.a',
+      }],
+      ['OS=="mac"', {
+        'clang%': 1,
+      }, {
+        'clang%': 0,
       }],
     ],
   },
@@ -99,7 +104,6 @@
             'EnableFunctionLevelLinking': 'true',
             'EnableIntrinsicFunctions': 'true',
             'RuntimeTypeInfo': 'false',
-            'ExceptionHandling': '0',
             'AdditionalOptions': [
               '/MP', # compile across multiple CPUs
             ],
@@ -128,7 +132,7 @@
         'DebugInformationFormat': 3, # Generate a PDB
         'WarningLevel': 3,
         'BufferSecurityCheck': 'true',
-        'ExceptionHandling': 1, # /EHsc
+        'ExceptionHandling': 0, # /EHsc
         'SuppressStartupBanner': 'true',
         'WarnAsError': 'false',
       },
@@ -136,8 +140,21 @@
       },
       'VCLinkerTool': {
         'conditions': [
+          ['target_arch=="ia32"', {
+            'TargetMachine' : 1, # /MACHINE:X86
+            'target_conditions': [
+              ['_type=="executable"', {
+                'AdditionalOptions': [ '/SubSystem:Console,"5.01"' ],
+              }],
+            ],
+          }],
           ['target_arch=="x64"', {
-            'TargetMachine' : 17 # /MACHINE:X64
+            'TargetMachine' : 17, # /MACHINE:AMD64
+            'target_conditions': [
+              ['_type=="executable"', {
+                'AdditionalOptions': [ '/SubSystem:Console,"5.02"' ],
+              }],
+            ],
           }],
         ],
         'GenerateDebugInformation': 'true',
@@ -145,11 +162,6 @@
         'DataExecutionPrevention': 2, # enable DEP
         'AllowIsolation': 'true',
         'SuppressStartupBanner': 'true',
-        'target_conditions': [
-          ['_type=="executable"', {
-            'SubSystem': 1, # console executable
-          }],
-        ],
       },
     },
     'msvs_disabled_warnings': [4351, 4355, 4800],
@@ -174,6 +186,8 @@
           # ... or that C implementations shouldn't use
           # POSIX names
           '_CRT_NONSTDC_NO_DEPRECATE',
+          # Make sure the STL doesn't try to use exceptions
+          '_HAS_EXCEPTIONS=0',
           'BUILDING_V8_SHARED=1',
           'BUILDING_UV_SHARED=1',
         ],

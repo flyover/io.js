@@ -40,6 +40,8 @@ import tempfile
 import time
 import threading
 import utils
+import multiprocessing
+import errno
 
 from os.path import join, dirname, abspath, basename, isdir, exists
 from datetime import datetime
@@ -57,16 +59,20 @@ class ProgressIndicator(object):
 
   def __init__(self, cases):
     self.cases = cases
-    self.queue = Queue(len(cases))
+    self.parallel_queue = Queue(len(cases))
+    self.sequential_queue = Queue(len(cases))
     for case in cases:
-      self.queue.put_nowait(case)
+      if case.parallel:
+        self.parallel_queue.put_nowait(case)
+      else:
+        self.sequential_queue.put_nowait(case)
     self.succeeded = 0
     self.remaining = len(cases)
     self.total = len(cases)
     self.failed = [ ]
     self.crashed = 0
-    self.terminate = False
     self.lock = threading.Lock()
+    self.shutdown_event = threading.Event()
 
   def PrintFailureHeader(self, test):
     if test.IsNegative():
@@ -86,31 +92,39 @@ class ProgressIndicator(object):
     # That way -j1 avoids threading altogether which is a nice fallback
     # in case of threading problems.
     for i in xrange(tasks - 1):
-      thread = threading.Thread(target=self.RunSingle, args=[])
+      thread = threading.Thread(target=self.RunSingle, args=[True, i + 1])
       threads.append(thread)
       thread.start()
     try:
-      self.RunSingle()
+      self.RunSingle(False, 0)
       # Wait for the remaining threads
       for thread in threads:
         # Use a timeout so that signals (ctrl-c) will be processed.
         thread.join(timeout=10000000)
+    except (KeyboardInterrupt, SystemExit), e:
+      self.shutdown_event.set()
     except Exception, e:
       # If there's an exception we schedule an interruption for any
       # remaining threads.
-      self.terminate = True
+      self.shutdown_event.set()
       # ...and then reraise the exception to bail out
       raise
     self.Done()
     return not self.failed
 
-  def RunSingle(self):
-    while not self.terminate:
+  def RunSingle(self, parallel, thread_id):
+    while not self.shutdown_event.is_set():
       try:
-        test = self.queue.get_nowait()
+        test = self.parallel_queue.get_nowait()
       except Empty:
-        return
+        if parallel:
+          return
+        try:
+          test = self.sequential_queue.get_nowait()
+        except Empty:
+          return
       case = test.case
+      case.thread_id = thread_id
       self.lock.acquire()
       self.AboutToRun(case)
       self.lock.release()
@@ -119,9 +133,8 @@ class ProgressIndicator(object):
         output = case.Run()
         case.duration = (datetime.now() - start)
       except IOError, e:
-        assert self.terminate
         return
-      if self.terminate:
+      if self.shutdown_event.is_set():
         return
       self.lock.acquire()
       if output.UnexpectedOutput():
@@ -374,6 +387,8 @@ class TestCase(object):
     self.duration = None
     self.arch = arch
     self.mode = mode
+    self.parallel = False
+    self.thread_id = 0
 
   def IsNegative(self):
     return False
@@ -392,11 +407,12 @@ class TestCase(object):
   def GetSource(self):
     return "(no source available)"
 
-  def RunCommand(self, command):
+  def RunCommand(self, command, env):
     full_command = self.context.processor(command)
     output = Execute(full_command,
                      self.context,
-                     self.context.GetTimeout(self.mode))
+                     self.context.GetTimeout(self.mode),
+                     env)
     self.Cleanup()
     return TestOutput(self,
                       full_command,
@@ -413,7 +429,9 @@ class TestCase(object):
     self.BeforeRun()
 
     try:
-      result = self.RunCommand(self.GetCommand())
+      result = self.RunCommand(self.GetCommand(), {
+        "TEST_THREAD_ID": "%d" % self.thread_id
+      })
     finally:
       # Tests can leave the tty in non-blocking mode. If the test runner
       # tries to print to stdout/stderr after that and the tty buffer is
@@ -546,21 +564,35 @@ def PrintError(str):
 
 
 def CheckedUnlink(name):
-  try:
-    os.unlink(name)
-  except OSError, e:
-    PrintError("os.unlink() " + str(e))
+  while True:
+    try:
+      os.unlink(name)
+    except OSError, e:
+      # On Windows unlink() fails if another process (typically a virus scanner
+      # or the indexing service) has the file open. Those processes keep a
+      # file open for a short time only, so yield and try again; it'll succeed.
+      if sys.platform == 'win32' and e.errno == errno.EACCES:
+        time.sleep(0)
+        continue
+      PrintError("os.unlink() " + str(e))
+    break
 
-
-def Execute(args, context, timeout=None):
+def Execute(args, context, timeout=None, env={}):
   (fd_out, outname) = tempfile.mkstemp()
   (fd_err, errname) = tempfile.mkstemp()
+
+  # Extend environment
+  env_copy = os.environ.copy()
+  for key, value in env.iteritems():
+    env_copy[key] = value
+
   (process, exit_code, timed_out) = RunProcess(
     context,
     timeout,
     args = args,
     stdout = fd_out,
     stderr = fd_err,
+    env = env_copy
   )
   os.close(fd_out)
   os.close(fd_err)
@@ -712,20 +744,20 @@ class Context(object):
 
   def GetVm(self, arch, mode):
     if arch == 'none':
-      name = 'out/Debug/node' if mode == 'debug' else 'out/Release/node'
+      name = 'out/Debug/iojs' if mode == 'debug' else 'out/Release/iojs'
     else:
-      name = 'out/%s.%s/node' % (arch, mode)
+      name = 'out/%s.%s/iojs' % (arch, mode)
 
     # Currently GYP does not support output_dir for MSVS.
     # http://code.google.com/p/gyp/issues/detail?id=40
-    # It will put the builds into Release/node.exe or Debug/node.exe
+    # It will put the builds into Release/iojs.exe or Debug/iojs.exe
     if utils.IsWindows():
       out_dir = os.path.join(dirname(__file__), "..", "out")
       if not exists(out_dir):
         if mode == 'debug':
-          name = os.path.abspath('Debug/node.exe')
+          name = os.path.abspath('Debug/iojs.exe')
         else:
-          name = os.path.abspath('Release/node.exe')
+          name = os.path.abspath('Release/iojs.exe')
       else:
         name = os.path.abspath(name + '.exe')
 
@@ -1060,6 +1092,7 @@ class ClassifiedTest(object):
   def __init__(self, case, outcomes):
     self.case = case
     self.outcomes = outcomes
+    self.parallel = self.case.parallel
 
 
 class Configuration(object):
@@ -1203,8 +1236,6 @@ def BuildOptions():
   result.add_option("--snapshot", help="Run the tests with snapshot turned on",
       default=False, action="store_true")
   result.add_option("--special-command", default=None)
-  result.add_option("--use-http1", help="Pass --use-http1 switch to node",
-      default=False, action="store_true")
   result.add_option("--valgrind", help="Run tests through valgrind",
       default=False, action="store_true")
   result.add_option("--cat", help="Print the source of the tests",
@@ -1213,6 +1244,8 @@ def BuildOptions():
       default=False, action="store_true")
   result.add_option("-j", help="The number of parallel tasks to run",
       default=1, type="int")
+  result.add_option("-J", help="Run tasks in parallel on all cores",
+      default=False, action="store_true")
   result.add_option("--time", help="Print timing information after running",
       default=False, action="store_true")
   result.add_option("--suppress-dialogs", help="Suppress Windows dialogs for crashing tests",
@@ -1234,28 +1267,26 @@ def ProcessOptions(options):
   VERBOSE = options.verbose
   options.arch = options.arch.split(',')
   options.mode = options.mode.split(',')
+  if options.J:
+    options.j = multiprocessing.cpu_count()
   return True
 
 
 REPORT_TEMPLATE = """\
 Total: %(total)i tests
  * %(skipped)4d tests will be skipped
- * %(nocrash)4d tests are expected to be flaky but not crash
  * %(pass)4d tests are expected to pass
  * %(fail_ok)4d tests are expected to fail that we won't fix
  * %(fail)4d tests are expected to fail that we should fix\
 """
 
 def PrintReport(cases):
-  def IsFlaky(o):
-    return (PASS in o) and (FAIL in o) and (not CRASH in o) and (not OKAY in o)
   def IsFailOk(o):
     return (len(o) == 2) and (FAIL in o) and (OKAY in o)
   unskipped = [c for c in cases if not SKIP in c.outcomes]
   print REPORT_TEMPLATE % {
     'total': len(cases),
     'skipped': len(cases) - len(unskipped),
-    'nocrash': len([t for t in unskipped if IsFlaky(t.outcomes)]),
     'pass': len([t for t in unskipped if list(t.outcomes) == [PASS]]),
     'fail_ok': len([t for t in unskipped if IsFailOk(t.outcomes)]),
     'fail': len([t for t in unskipped if list(t.outcomes) == [FAIL]])
@@ -1299,10 +1330,12 @@ def GetSpecialCommandProcessor(value):
 
 
 BUILT_IN_TESTS = [
-  'simple',
+  'sequential',
+  'parallel',
   'pummel',
   'message',
   'internet',
+  'addons',
   'gc',
   'debugger',
 ]
@@ -1350,11 +1383,6 @@ def Main():
   buildspace = dirname(shell)
 
   processor = GetSpecialCommandProcessor(options.special_command)
-  if options.use_http1:
-    def wrap(processor):
-      return lambda args: processor(args[:1] + ['--use-http1'] + args[1:])
-    processor = wrap(processor)
-
   context = Context(workspace,
                     buildspace,
                     VERBOSE,
@@ -1440,7 +1468,7 @@ def Main():
   cases_to_run = [ c for c in all_cases if not DoSkip(c) ]
   if len(cases_to_run) == 0:
     print "No tests to run."
-    return 0
+    return 1
   else:
     try:
       start = time.time()

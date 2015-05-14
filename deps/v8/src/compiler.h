@@ -39,6 +39,9 @@ class ScriptData {
 
   const byte* data() const { return data_; }
   int length() const { return length_; }
+  bool rejected() const { return rejected_; }
+
+  void Reject() { rejected_ = true; }
 
   void AcquireDataOwnership() {
     DCHECK(!owns_data_);
@@ -51,7 +54,8 @@ class ScriptData {
   }
 
  private:
-  bool owns_data_;
+  bool owns_data_ : 1;
+  bool rejected_ : 1;
   const byte* data_;
   int length_;
 
@@ -85,8 +89,7 @@ class CompilationInfo {
     kInliningEnabled = 1 << 17,
     kTypingEnabled = 1 << 18,
     kDisableFutureOptimization = 1 << 19,
-    kAbortedDueToDependency = 1 << 20,
-    kToplevel = 1 << 21
+    kToplevel = 1 << 20
   };
 
   CompilationInfo(Handle<JSFunction> closure, Zone* zone);
@@ -106,7 +109,7 @@ class CompilationInfo {
   }
   FunctionLiteral* function() const { return function_; }
   Scope* scope() const { return scope_; }
-  Scope* global_scope() const { return global_scope_; }
+  Scope* script_scope() const { return script_scope_; }
   Handle<Code> code() const { return code_; }
   Handle<JSFunction> closure() const { return closure_; }
   Handle<SharedFunctionInfo> shared_info() const { return shared_info_; }
@@ -201,8 +204,6 @@ class CompilationInfo {
 
   void MarkAsInliningEnabled() { SetFlag(kInliningEnabled); }
 
-  void MarkAsInliningDisabled() { SetFlag(kInliningEnabled, false); }
-
   bool is_inlining_enabled() const { return GetFlag(kInliningEnabled); }
 
   void MarkAsTypingEnabled() { SetFlag(kTypingEnabled); }
@@ -232,10 +233,11 @@ class CompilationInfo {
     function_ = literal;
   }
   void PrepareForCompilation(Scope* scope);
-  void SetGlobalScope(Scope* global_scope) {
-    DCHECK(global_scope_ == NULL);
-    global_scope_ = global_scope;
+  void SetScriptScope(Scope* script_scope) {
+    DCHECK(script_scope_ == NULL);
+    script_scope_ = script_scope;
   }
+  void EnsureFeedbackVector();
   Handle<TypeFeedbackVector> feedback_vector() const {
     return feedback_vector_;
   }
@@ -371,12 +373,12 @@ class CompilationInfo {
 
   void AbortDueToDependencyChange() {
     DCHECK(!OptimizingCompilerThread::IsOptimizerThread(isolate()));
-    SetFlag(kAbortedDueToDependency);
+    aborted_due_to_dependency_change_ = true;
   }
 
   bool HasAbortedDueToDependencyChange() const {
     DCHECK(!OptimizingCompilerThread::IsOptimizerThread(isolate()));
-    return GetFlag(kAbortedDueToDependency);
+    return aborted_due_to_dependency_change_;
   }
 
   bool HasSameOsrEntry(Handle<JSFunction> function, BailoutId osr_ast_id) {
@@ -391,8 +393,6 @@ class CompilationInfo {
     ast_value_factory_ = ast_value_factory;
     ast_value_factory_owned_ = owned;
   }
-
-  AstNode::IdGen* ast_node_id_gen() { return &ast_node_id_gen_; }
 
  protected:
   CompilationInfo(Handle<Script> script,
@@ -444,8 +444,8 @@ class CompilationInfo {
   // The scope of the function literal as a convenience.  Set to indicate
   // that scopes have been analyzed.
   Scope* scope_;
-  // The global scope provided as a convenience.
-  Scope* global_scope_;
+  // The script scope provided as a convenience.
+  Scope* script_scope_;
   // For compiled stubs, the stub object
   HydrogenCodeStub* code_stub_;
   // The compiled code.
@@ -463,7 +463,7 @@ class CompilationInfo {
   ScriptData** cached_data_;
   ScriptCompiler::CompileOptions compile_options_;
 
-  // The context of the caller for eval code, and the global context for a
+  // The context of the caller for eval code, and the script context for a
   // global script. Will be a null handle otherwise.
   Handle<Context> context_;
 
@@ -513,7 +513,10 @@ class CompilationInfo {
 
   AstValueFactory* ast_value_factory_;
   bool ast_value_factory_owned_;
-  AstNode::IdGen ast_node_id_gen_;
+
+  // This flag is used by the main thread to track whether this compilation
+  // should be abandoned due to dependency change.
+  bool aborted_due_to_dependency_change_;
 
   DISALLOW_COPY_AND_ASSIGN(CompilationInfo);
 };
@@ -675,20 +678,23 @@ class Compiler : public AllStatic {
   MUST_USE_RESULT static MaybeHandle<Code> GetDebugCode(
       Handle<JSFunction> function);
 
+  // Parser::Parse, then Compiler::Analyze.
+  static bool ParseAndAnalyze(CompilationInfo* info);
+  // Rewrite, analyze scopes, and renumber.
+  static bool Analyze(CompilationInfo* info);
+  // Adds deoptimization support, requires ParseAndAnalyze.
+  static bool EnsureDeoptimizationSupport(CompilationInfo* info);
+
   static bool EnsureCompiled(Handle<JSFunction> function,
                              ClearExceptionFlag flag);
-
-  static bool EnsureDeoptimizationSupport(CompilationInfo* info);
 
   static void CompileForLiveEdit(Handle<Script> script);
 
   // Compile a String source within a context for eval.
   MUST_USE_RESULT static MaybeHandle<JSFunction> GetFunctionFromEval(
-      Handle<String> source,
-      Handle<Context> context,
-      StrictMode strict_mode,
-      ParseRestriction restriction,
-      int scope_position);
+      Handle<String> source, Handle<SharedFunctionInfo> outer_info,
+      Handle<Context> context, StrictMode strict_mode,
+      ParseRestriction restriction, int scope_position);
 
   // Compile a String source within a context.
   static Handle<SharedFunctionInfo> CompileScript(

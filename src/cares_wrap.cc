@@ -1,24 +1,3 @@
-// Copyright Joyent, Inc. and other Node contributors.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the
-// "Software"), to deal in the Software without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Software, and to permit
-// persons to whom the Software is furnished to do so, subject to the
-// following conditions:
-//
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
-// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-// USE OR OTHER DEALINGS IN THE SOFTWARE.
-
 #define CARES_STATICLIB
 #include "ares.h"
 #include "async-wrap.h"
@@ -26,7 +5,8 @@
 #include "env.h"
 #include "env-inl.h"
 #include "node.h"
-#include "req_wrap.h"
+#include "req-wrap.h"
+#include "req-wrap-inl.h"
 #include "tree.h"
 #include "util.h"
 #include "uv.h"
@@ -45,6 +25,9 @@
 # include <arpa/nameser.h>
 #endif
 
+#if defined(__OpenBSD__)
+# define AI_V4MAPPED 0
+#endif
 
 namespace node {
 namespace cares_wrap {
@@ -54,6 +37,7 @@ using v8::Context;
 using v8::EscapableHandleScope;
 using v8::Function;
 using v8::FunctionCallbackInfo;
+using v8::FunctionTemplate;
 using v8::Handle;
 using v8::HandleScope;
 using v8::Integer;
@@ -63,8 +47,39 @@ using v8::Object;
 using v8::String;
 using v8::Value;
 
-typedef class ReqWrap<uv_getaddrinfo_t> GetAddrInfoReqWrap;
-typedef class ReqWrap<uv_getnameinfo_t> GetNameInfoReqWrap;
+
+class GetAddrInfoReqWrap : public ReqWrap<uv_getaddrinfo_t> {
+ public:
+  GetAddrInfoReqWrap(Environment* env, Local<Object> req_wrap_obj);
+};
+
+GetAddrInfoReqWrap::GetAddrInfoReqWrap(Environment* env,
+                                       Local<Object> req_wrap_obj)
+    : ReqWrap(env, req_wrap_obj, AsyncWrap::PROVIDER_GETADDRINFOREQWRAP) {
+  Wrap(req_wrap_obj, this);
+}
+
+
+static void NewGetAddrInfoReqWrap(const FunctionCallbackInfo<Value>& args) {
+  CHECK(args.IsConstructCall());
+}
+
+
+class GetNameInfoReqWrap : public ReqWrap<uv_getnameinfo_t> {
+  public:
+    GetNameInfoReqWrap(Environment* env, Local<Object> req_wrap_obj);
+};
+
+GetNameInfoReqWrap::GetNameInfoReqWrap(Environment* env,
+                                       Local<Object> req_wrap_obj)
+    : ReqWrap(env, req_wrap_obj, AsyncWrap::PROVIDER_GETNAMEINFOREQWRAP) {
+  Wrap(req_wrap_obj, this);
+}
+
+
+static void NewGetNameInfoReqWrap(const FunctionCallbackInfo<Value>& args) {
+  CHECK(args.IsConstructCall());
+}
 
 
 static int cmp_ares_tasks(const ares_task_t* a, const ares_task_t* b) {
@@ -228,7 +243,9 @@ static Local<Array> HostentToNames(Environment* env, struct hostent* host) {
 class QueryWrap : public AsyncWrap {
  public:
   QueryWrap(Environment* env, Local<Object> req_wrap_obj)
-      : AsyncWrap(env, req_wrap_obj, AsyncWrap::PROVIDER_CARES) {
+      : AsyncWrap(env, req_wrap_obj, AsyncWrap::PROVIDER_QUERYWRAP) {
+    if (env->in_domain())
+      req_wrap_obj->Set(env->domain_string(), env->domain_array()->Get(0));
   }
 
   virtual ~QueryWrap() override {
@@ -850,7 +867,7 @@ static void Query(const FunctionCallbackInfo<Value>& args) {
   Local<String> string = args[1].As<String>();
   Wrap* wrap = new Wrap(env, req_wrap_obj);
 
-  node::Utf8Value name(string);
+  node::Utf8Value name(env->isolate(), string);
   int err = wrap->Send(*name);
   if (err)
     delete wrap;
@@ -989,7 +1006,7 @@ void AfterGetNameInfo(uv_getnameinfo_t* req,
 
 
 static void IsIP(const FunctionCallbackInfo<Value>& args) {
-  node::Utf8Value ip(args[0]);
+  node::Utf8Value ip(args.GetIsolate(), args[0]);
   char address_buffer[sizeof(struct in6_addr)];
 
   int rc = 0;
@@ -1009,7 +1026,7 @@ static void GetAddrInfo(const FunctionCallbackInfo<Value>& args) {
   CHECK(args[1]->IsString());
   CHECK(args[2]->IsInt32());
   Local<Object> req_wrap_obj = args[0].As<Object>();
-  node::Utf8Value hostname(args[1]);
+  node::Utf8Value hostname(env->isolate(), args[1]);
 
   int32_t flags = (args[3]->IsInt32()) ? args[3]->Int32Value() : 0;
   int family;
@@ -1029,10 +1046,7 @@ static void GetAddrInfo(const FunctionCallbackInfo<Value>& args) {
     abort();
   }
 
-  GetAddrInfoReqWrap* req_wrap =
-    new GetAddrInfoReqWrap(env,
-                           req_wrap_obj,
-                           AsyncWrap::PROVIDER_GETADDRINFOREQWRAP);
+  GetAddrInfoReqWrap* req_wrap = new GetAddrInfoReqWrap(env, req_wrap_obj);
 
   struct addrinfo hints;
   memset(&hints, 0, sizeof(struct addrinfo));
@@ -1061,17 +1075,14 @@ static void GetNameInfo(const FunctionCallbackInfo<Value>& args) {
   CHECK(args[1]->IsString());
   CHECK(args[2]->IsUint32());
   Local<Object> req_wrap_obj = args[0].As<Object>();
-  node::Utf8Value ip(args[1]);
+  node::Utf8Value ip(env->isolate(), args[1]);
   const unsigned port = args[2]->Uint32Value();
   struct sockaddr_storage addr;
 
   CHECK(uv_ip4_addr(*ip, port, reinterpret_cast<sockaddr_in*>(&addr)) == 0 ||
         uv_ip6_addr(*ip, port, reinterpret_cast<sockaddr_in6*>(&addr)) == 0);
 
-  GetNameInfoReqWrap* req_wrap =
-      new GetNameInfoReqWrap(env,
-                             req_wrap_obj,
-                             AsyncWrap::PROVIDER_GETNAMEINFOREQWRAP);
+  GetNameInfoReqWrap* req_wrap = new GetNameInfoReqWrap(env, req_wrap_obj);
 
   int err = uv_getnameinfo(env->event_loop(),
                            &req_wrap->req_,
@@ -1143,7 +1154,7 @@ static void SetServers(const FunctionCallbackInfo<Value>& args) {
     CHECK(elm->Get(1)->IsString());
 
     int fam = elm->Get(0)->Int32Value();
-    node::Utf8Value ip(elm->Get(1));
+    node::Utf8Value ip(env->isolate(), elm->Get(1));
 
     ares_addr_node* cur = &servers[i];
 
@@ -1261,6 +1272,22 @@ static void Initialize(Handle<Object> target,
               Integer::New(env->isolate(), AI_ADDRCONFIG));
   target->Set(FIXED_ONE_BYTE_STRING(env->isolate(), "AI_V4MAPPED"),
               Integer::New(env->isolate(), AI_V4MAPPED));
+
+  Local<FunctionTemplate> aiw =
+      FunctionTemplate::New(env->isolate(), NewGetAddrInfoReqWrap);
+  aiw->InstanceTemplate()->SetInternalFieldCount(1);
+  aiw->SetClassName(
+      FIXED_ONE_BYTE_STRING(env->isolate(), "GetAddrInfoReqWrap"));
+  target->Set(FIXED_ONE_BYTE_STRING(env->isolate(), "GetAddrInfoReqWrap"),
+              aiw->GetFunction());
+
+  Local<FunctionTemplate> niw =
+      FunctionTemplate::New(env->isolate(), NewGetNameInfoReqWrap);
+  niw->InstanceTemplate()->SetInternalFieldCount(1);
+  niw->SetClassName(
+      FIXED_ONE_BYTE_STRING(env->isolate(), "GetNameInfoReqWrap"));
+  target->Set(FIXED_ONE_BYTE_STRING(env->isolate(), "GetNameInfoReqWrap"),
+              niw->GetFunction());
 }
 
 }  // namespace cares_wrap

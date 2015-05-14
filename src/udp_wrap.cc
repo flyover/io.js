@@ -1,30 +1,10 @@
-// Copyright Joyent, Inc. and other Node contributors.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the
-// "Software"), to deal in the Software without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Software, and to permit
-// persons to whom the Software is furnished to do so, subject to the
-// following conditions:
-//
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
-// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-// USE OR OTHER DEALINGS IN THE SOFTWARE.
-
 #include "udp_wrap.h"
 #include "env.h"
 #include "env-inl.h"
 #include "node_buffer.h"
 #include "handle_wrap.h"
-#include "req_wrap.h"
+#include "req-wrap.h"
+#include "req-wrap-inl.h"
 #include "util.h"
 #include "util-inl.h"
 
@@ -34,6 +14,8 @@
 namespace node {
 
 using v8::Context;
+using v8::EscapableHandleScope;
+using v8::External;
 using v8::Function;
 using v8::FunctionCallbackInfo;
 using v8::FunctionTemplate;
@@ -62,8 +44,9 @@ class SendWrap : public ReqWrap<uv_udp_send_t> {
 SendWrap::SendWrap(Environment* env,
                    Local<Object> req_wrap_obj,
                    bool have_callback)
-    : ReqWrap<uv_udp_send_t>(env, req_wrap_obj),
+    : ReqWrap(env, req_wrap_obj, AsyncWrap::PROVIDER_UDPWRAP),
       have_callback_(have_callback) {
+  Wrap(req_wrap_obj, this);
 }
 
 
@@ -72,7 +55,12 @@ inline bool SendWrap::have_callback() const {
 }
 
 
-UDPWrap::UDPWrap(Environment* env, Handle<Object> object)
+static void NewSendWrap(const FunctionCallbackInfo<Value>& args) {
+  CHECK(args.IsConstructCall());
+}
+
+
+UDPWrap::UDPWrap(Environment* env, Handle<Object> object, AsyncWrap* parent)
     : HandleWrap(env,
                  object,
                  reinterpret_cast<uv_handle_t*>(&handle_),
@@ -120,13 +108,29 @@ void UDPWrap::Initialize(Handle<Object> target,
 
   target->Set(FIXED_ONE_BYTE_STRING(env->isolate(), "UDP"), t->GetFunction());
   env->set_udp_constructor_function(t->GetFunction());
+
+  // Create FunctionTemplate for SendWrap
+  Local<FunctionTemplate> swt =
+      FunctionTemplate::New(env->isolate(), NewSendWrap);
+  swt->InstanceTemplate()->SetInternalFieldCount(1);
+  swt->SetClassName(FIXED_ONE_BYTE_STRING(env->isolate(), "SendWrap"));
+  target->Set(FIXED_ONE_BYTE_STRING(env->isolate(), "SendWrap"),
+              swt->GetFunction());
 }
 
 
 void UDPWrap::New(const FunctionCallbackInfo<Value>& args) {
   CHECK(args.IsConstructCall());
   Environment* env = Environment::GetCurrent(args);
-  new UDPWrap(env, args.This());
+  if (args.Length() == 0) {
+    new UDPWrap(env, args.This(), nullptr);
+  } else if (args[0]->IsExternal()) {
+    new UDPWrap(env,
+                args.This(),
+                static_cast<AsyncWrap*>(args[0].As<External>()->Value()));
+  } else {
+    UNREACHABLE();
+  }
 }
 
 
@@ -146,7 +150,7 @@ void UDPWrap::DoBind(const FunctionCallbackInfo<Value>& args, int family) {
   // bind(ip, port, flags)
   CHECK_EQ(args.Length(), 3);
 
-  node::Utf8Value address(args[0]);
+  node::Utf8Value address(args.GetIsolate(), args[0]);
   const int port = args[1]->Uint32Value();
   const int flags = args[2]->Uint32Value();
   char addr[sizeof(sockaddr_in6)];
@@ -207,8 +211,8 @@ void UDPWrap::SetMembership(const FunctionCallbackInfo<Value>& args,
 
   CHECK_EQ(args.Length(), 2);
 
-  node::Utf8Value address(args[0]);
-  node::Utf8Value iface(args[1]);
+  node::Utf8Value address(args.GetIsolate(), args[0]);
+  node::Utf8Value iface(args.GetIsolate(), args[1]);
 
   const char* iface_cstr = *iface;
   if (args[1]->IsUndefined() || args[1]->IsNull()) {
@@ -252,7 +256,7 @@ void UDPWrap::DoSend(const FunctionCallbackInfo<Value>& args, int family) {
   size_t offset = args[2]->Uint32Value();
   size_t length = args[3]->Uint32Value();
   const unsigned short port = args[4]->Uint32Value();
-  node::Utf8Value address(args[5]);
+  node::Utf8Value address(env->isolate(), args[5]);
   const bool have_callback = args[6]->IsTrue();
 
   CHECK_LE(length, Buffer::Length(buffer_obj) - offset);
@@ -409,10 +413,12 @@ void UDPWrap::OnRecv(uv_udp_t* handle,
 }
 
 
-Local<Object> UDPWrap::Instantiate(Environment* env) {
+Local<Object> UDPWrap::Instantiate(Environment* env, AsyncWrap* parent) {
   // If this assert fires then Initialize hasn't been called yet.
   CHECK_EQ(env->udp_constructor_function().IsEmpty(), false);
-  return env->udp_constructor_function()->NewInstance();
+  EscapableHandleScope scope(env->isolate());
+  Local<Value> ptr = External::New(env->isolate(), parent);
+  return scope.Escape(env->udp_constructor_function()->NewInstance(1, &ptr));
 }
 
 

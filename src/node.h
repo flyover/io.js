@@ -1,24 +1,3 @@
-// Copyright Joyent, Inc. and other Node contributors.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the
-// "Software"), to deal in the Software without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Software, and to permit
-// persons to whom the Software is furnished to do so, subject to the
-// following conditions:
-//
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
-// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-// USE OR OTHER DEALINGS IN THE SOFTWARE.
-
 #ifndef SRC_NODE_H_
 #define SRC_NODE_H_
 
@@ -80,6 +59,12 @@ NODE_EXTERN v8::Local<v8::Value> UVException(v8::Isolate* isolate,
                                              const char* syscall = NULL,
                                              const char* message = NULL,
                                              const char* path = NULL);
+NODE_EXTERN v8::Local<v8::Value> UVException(v8::Isolate* isolate,
+                                             int errorno,
+                                             const char* syscall,
+                                             const char* message,
+                                             const char* path,
+                                             const char* dest);
 
 NODE_DEPRECATED("Use UVException(isolate, ...)",
                 inline v8::Local<v8::Value> ErrnoException(
@@ -137,11 +122,12 @@ NODE_EXTERN v8::Handle<v8::Value> MakeCallback(
 
 }  // namespace node
 
-#if NODE_WANT_INTERNALS
+#if defined(NODE_WANT_INTERNALS) && NODE_WANT_INTERNALS
 #include "node_internals.h"
 #endif
 
 #include <assert.h>
+#include <stdint.h>
 
 #ifndef NODE_STRINGIFY
 #define NODE_STRINGIFY(n) NODE_STRINGIFY_HELPER(n)
@@ -204,7 +190,7 @@ NODE_EXTERN void RunAtExit(Environment* env);
 // Used to be a macro, hence the uppercase name.
 #define NODE_DEFINE_CONSTANT(target, constant)                                \
   do {                                                                        \
-    v8::Isolate* isolate = v8::Isolate::GetCurrent();                         \
+    v8::Isolate* isolate = target->GetIsolate();                              \
     v8::Local<v8::String> constant_name =                                     \
         v8::String::NewFromUtf8(isolate, #constant);                          \
     v8::Local<v8::Number> constant_value =                                    \
@@ -251,12 +237,12 @@ inline void NODE_SET_PROTOTYPE_METHOD(v8::Handle<v8::FunctionTemplate> recv,
 enum encoding {ASCII, UTF8, BASE64, UCS2, BINARY, HEX, BUFFER};
 enum encoding ParseEncoding(v8::Isolate* isolate,
                             v8::Handle<v8::Value> encoding_v,
-                            enum encoding _default = BINARY);
+                            enum encoding default_encoding = BINARY);
 NODE_DEPRECATED("Use ParseEncoding(isolate, ...)",
                 inline enum encoding ParseEncoding(
       v8::Handle<v8::Value> encoding_v,
-      enum encoding _default = BINARY) {
-  return ParseEncoding(v8::Isolate::GetCurrent(), encoding_v, _default);
+      enum encoding default_encoding = BINARY) {
+  return ParseEncoding(v8::Isolate::GetCurrent(), encoding_v, default_encoding);
 })
 
 NODE_EXTERN void FatalException(v8::Isolate* isolate,
@@ -267,16 +253,30 @@ NODE_DEPRECATED("Use FatalException(isolate, ...)",
   return FatalException(v8::Isolate::GetCurrent(), try_catch);
 })
 
+// Don't call with encoding=UCS2.
 NODE_EXTERN v8::Local<v8::Value> Encode(v8::Isolate* isolate,
-                                        const void* buf,
+                                        const char* buf,
                                         size_t len,
                                         enum encoding encoding = BINARY);
+
+// The input buffer should be in host endianness.
+NODE_EXTERN v8::Local<v8::Value> Encode(v8::Isolate* isolate,
+                                        const uint16_t* buf,
+                                        size_t len);
+
 NODE_DEPRECATED("Use Encode(isolate, ...)",
                 inline v8::Local<v8::Value> Encode(
     const void* buf,
     size_t len,
     enum encoding encoding = BINARY) {
-  return Encode(v8::Isolate::GetCurrent(), buf, len, encoding);
+  v8::Isolate* isolate = v8::Isolate::GetCurrent();
+  if (encoding == UCS2) {
+    assert(reinterpret_cast<uintptr_t>(buf) % sizeof(uint16_t) == 0 &&
+           "UCS2 buffer must be aligned on two-byte boundary.");
+    const uint16_t* that = static_cast<const uint16_t*>(buf);
+    return Encode(isolate, that, len / sizeof(*that));
+  }
+  return Encode(isolate, static_cast<const char*>(buf), len, encoding);
 })
 
 // Returns -1 if the handle was not valid for decoding
@@ -339,6 +339,7 @@ typedef void (*addon_context_register_func)(
     void* priv);
 
 #define NM_F_BUILTIN 0x01
+#define NM_F_LINKED  0x02
 
 struct node_module {
   int nm_version;
@@ -353,6 +354,7 @@ struct node_module {
 };
 
 node_module* get_builtin_module(const char *name);
+node_module* get_linked_module(const char *name);
 
 extern "C" NODE_EXTERN void node_module_register(void* mod);
 
