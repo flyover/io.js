@@ -3,7 +3,7 @@
 #include "node_crypto.h"
 #include "node_crypto_bio.h"
 #include "node_crypto_groups.h"
-#include "tls_wrap.h"  // TLSCallbacks
+#include "tls_wrap.h"  // TLSWrap
 
 #include "async-wrap.h"
 #include "async-wrap-inl.h"
@@ -60,6 +60,8 @@ namespace crypto {
 using v8::Array;
 using v8::Boolean;
 using v8::Context;
+using v8::DEFAULT;
+using v8::DontDelete;
 using v8::EscapableHandleScope;
 using v8::Exception;
 using v8::External;
@@ -76,6 +78,7 @@ using v8::Object;
 using v8::Persistent;
 using v8::PropertyAttribute;
 using v8::PropertyCallbackInfo;
+using v8::ReadOnly;
 using v8::String;
 using v8::V8;
 using v8::Value;
@@ -98,28 +101,28 @@ const char* const root_certs[] = {
 X509_STORE* root_cert_store;
 
 // Just to generate static methods
-template class SSLWrap<TLSCallbacks>;
-template void SSLWrap<TLSCallbacks>::AddMethods(Environment* env,
-                                                Handle<FunctionTemplate> t);
-template void SSLWrap<TLSCallbacks>::InitNPN(SecureContext* sc);
-template SSL_SESSION* SSLWrap<TLSCallbacks>::GetSessionCallback(
+template class SSLWrap<TLSWrap>;
+template void SSLWrap<TLSWrap>::AddMethods(Environment* env,
+                                           Handle<FunctionTemplate> t);
+template void SSLWrap<TLSWrap>::InitNPN(SecureContext* sc);
+template SSL_SESSION* SSLWrap<TLSWrap>::GetSessionCallback(
     SSL* s,
     unsigned char* key,
     int len,
     int* copy);
-template int SSLWrap<TLSCallbacks>::NewSessionCallback(SSL* s,
-                                                       SSL_SESSION* sess);
-template void SSLWrap<TLSCallbacks>::OnClientHello(
+template int SSLWrap<TLSWrap>::NewSessionCallback(SSL* s,
+                                                  SSL_SESSION* sess);
+template void SSLWrap<TLSWrap>::OnClientHello(
     void* arg,
     const ClientHelloParser::ClientHello& hello);
 
 #ifdef OPENSSL_NPN_NEGOTIATED
-template int SSLWrap<TLSCallbacks>::AdvertiseNextProtoCallback(
+template int SSLWrap<TLSWrap>::AdvertiseNextProtoCallback(
     SSL* s,
     const unsigned char** data,
     unsigned int* len,
     void* arg);
-template int SSLWrap<TLSCallbacks>::SelectNextProtoCallback(
+template int SSLWrap<TLSWrap>::SelectNextProtoCallback(
     SSL* s,
     unsigned char** out,
     unsigned char* outlen,
@@ -127,7 +130,8 @@ template int SSLWrap<TLSCallbacks>::SelectNextProtoCallback(
     unsigned int inlen,
     void* arg);
 #endif
-template int SSLWrap<TLSCallbacks>::TLSExtStatusCallback(SSL* s, void* arg);
+template int SSLWrap<TLSWrap>::TLSExtStatusCallback(SSL* s, void* arg);
+template void SSLWrap<TLSWrap>::DestroySSL();
 
 
 static void crypto_threadid_cb(CRYPTO_THREADID* tid) {
@@ -261,13 +265,17 @@ void SecureContext::Initialize(Environment* env, Handle<Object> target) {
   env->SetProtoMethod(t, "loadPKCS12", SecureContext::LoadPKCS12);
   env->SetProtoMethod(t, "getTicketKeys", SecureContext::GetTicketKeys);
   env->SetProtoMethod(t, "setTicketKeys", SecureContext::SetTicketKeys);
+  env->SetProtoMethod(t, "setFreeListLength", SecureContext::SetFreeListLength);
   env->SetProtoMethod(t, "getCertificate", SecureContext::GetCertificate<true>);
   env->SetProtoMethod(t, "getIssuer", SecureContext::GetCertificate<false>);
 
-  NODE_SET_EXTERNAL(
-      t->PrototypeTemplate(),
-      "_external",
-      CtxGetter);
+  t->PrototypeTemplate()->SetAccessor(
+      FIXED_ONE_BYTE_STRING(env->isolate(), "_external"),
+      CtxGetter,
+      nullptr,
+      env->as_external(),
+      DEFAULT,
+      static_cast<PropertyAttribute>(ReadOnly | DontDelete));
 
   target->Set(FIXED_ONE_BYTE_STRING(env->isolate(), "SecureContext"),
               t->GetFunction());
@@ -746,6 +754,12 @@ void SecureContext::SetDHParam(const FunctionCallbackInfo<Value>& args) {
   if (dh == nullptr)
     return;
 
+  const int keylen = BN_num_bits(dh->p);
+  if (keylen < 1024)
+    return env->ThrowError("DH parameter is less than 1024 bits");
+  else if (keylen < 2048)
+    fprintf(stderr, "WARNING: DH parameter is less than 2048 bits\n");
+
   SSL_CTX_set_options(sc->ctx_, SSL_OP_SINGLE_DH_USE);
   int r = SSL_CTX_set_tmp_dh(sc->ctx_, dh);
   DH_free(dh);
@@ -926,6 +940,13 @@ void SecureContext::SetTicketKeys(const FunctionCallbackInfo<Value>& args) {
 }
 
 
+void SecureContext::SetFreeListLength(const FunctionCallbackInfo<Value>& args) {
+  SecureContext* wrap = Unwrap<SecureContext>(args.Holder());
+
+  wrap->ctx_->freelist_max_len = args[0]->Int32Value();
+}
+
+
 void SecureContext::CtxGetter(Local<String> property,
                               const PropertyCallbackInfo<Value>& info) {
   HandleScope scope(info.GetIsolate());
@@ -973,7 +994,7 @@ void SSLWrap<Base>::AddMethods(Environment* env, Handle<FunctionTemplate> t) {
   env->SetProtoMethod(t, "getCurrentCipher", GetCurrentCipher);
   env->SetProtoMethod(t, "endParser", EndParser);
   env->SetProtoMethod(t, "renegotiate", Renegotiate);
-  env->SetProtoMethod(t, "shutdown", Shutdown);
+  env->SetProtoMethod(t, "shutdownSSL", Shutdown);
   env->SetProtoMethod(t, "getTLSTicket", GetTLSTicket);
   env->SetProtoMethod(t, "newSessionDone", NewSessionDone);
   env->SetProtoMethod(t, "setOCSPResponse", SetOCSPResponse);
@@ -991,10 +1012,13 @@ void SSLWrap<Base>::AddMethods(Environment* env, Handle<FunctionTemplate> t) {
   env->SetProtoMethod(t, "setNPNProtocols", SetNPNProtocols);
 #endif
 
-  NODE_SET_EXTERNAL(
-      t->PrototypeTemplate(),
-      "_external",
-      SSLGetter);
+  t->PrototypeTemplate()->SetAccessor(
+      FIXED_ONE_BYTE_STRING(env->isolate(), "_external"),
+      SSLGetter,
+      nullptr,
+      env->as_external(),
+      DEFAULT,
+      static_cast<PropertyAttribute>(ReadOnly | DontDelete));
 }
 
 
@@ -1132,6 +1156,7 @@ static bool SafeX509ExtPrint(BIO* out, X509_EXTENSION* ext) {
       X509V3_EXT_val_prn(out, nval, 0, 0);
     }
   }
+  sk_GENERAL_NAME_pop_free(names, GENERAL_NAME_free);
 
   return true;
 }
@@ -1858,6 +1883,17 @@ void SSLWrap<Base>::SSLGetter(Local<String> property,
   SSL* ssl = Unwrap<Base>(info.Holder())->ssl_;
   Local<External> ext = External::New(info.GetIsolate(), ssl);
   info.GetReturnValue().Set(ext);
+}
+
+
+template <class Base>
+void SSLWrap<Base>::DestroySSL() {
+  if (ssl_ == nullptr)
+    return;
+
+  SSL_free(ssl_);
+  env_->isolate()->AdjustAmountOfExternalAllocatedMemory(-kExternalSize);
+  ssl_ = nullptr;
 }
 
 
@@ -3651,8 +3687,8 @@ void DiffieHellman::Initialize(Environment* env, Handle<Object> target) {
   t->InstanceTemplate()->SetAccessor(env->verify_error_string(),
                                      DiffieHellman::VerifyErrorGetter,
                                      nullptr,
-                                     Handle<Value>(),
-                                     v8::DEFAULT,
+                                     env->as_external(),
+                                     DEFAULT,
                                      attributes);
 
   target->Set(FIXED_ONE_BYTE_STRING(env->isolate(), "DiffieHellman"),
@@ -3671,8 +3707,8 @@ void DiffieHellman::Initialize(Environment* env, Handle<Object> target) {
   t2->InstanceTemplate()->SetAccessor(env->verify_error_string(),
                                       DiffieHellman::VerifyErrorGetter,
                                       nullptr,
-                                      Handle<Value>(),
-                                      v8::DEFAULT,
+                                      env->as_external(),
+                                      DEFAULT,
                                       attributes);
 
   target->Set(FIXED_ONE_BYTE_STRING(env->isolate(), "DiffieHellmanGroup"),

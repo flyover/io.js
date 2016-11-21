@@ -1,10 +1,10 @@
-if (!process.versions.openssl) {
-  console.error('Skipping because node compiled without OpenSSL.');
-  process.exit(0);
-}
-
 var common = require('../common');
 var assert = require('assert');
+
+if (!common.hasCrypto) {
+  console.log('1..0 # Skipped: missing crypto');
+  process.exit();
+}
 var tls = require('tls');
 var fs = require('fs');
 
@@ -28,15 +28,14 @@ var server = tls.createServer(options, function(conn) {
     ciphers: 'ECDHE-ECDSA-AES256-GCM-SHA384',
     rejectUnauthorized: false
   }, function() {
+    ciphers.push(ecdsa.getCipher());
     var rsa = tls.connect(common.PORT, {
       ciphers: 'ECDHE-RSA-AES256-GCM-SHA384',
       rejectUnauthorized: false
     }, function() {
+      ciphers.push(rsa.getCipher());
       ecdsa.destroy();
       rsa.destroy();
-
-      ciphers.push(ecdsa.getCipher());
-      ciphers.push(rsa.getCipher());
       server.close();
     });
   });

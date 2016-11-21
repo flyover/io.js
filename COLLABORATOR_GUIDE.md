@@ -36,7 +36,7 @@ necessary.
 
 ## Accepting Modifications
 
-All modifications to the the io.js code and documentation should be
+All modifications to the io.js code and documentation should be
 performed via GitHub pull requests, including modifications by
 Collaborators and TC members.
 
@@ -89,7 +89,7 @@ information regarding the change process:
   other Collaborators who have reviewed the change.
 - A `PR-URL:` line that references the full GitHub URL of the original
   pull request being merged so it's easy to trace a commit back to the
-  conversation that lead up to that change.
+  conversation that led up to that change.
 - A `Fixes: X` line, where _X_ is either includes the full GitHub URL
   for an issue, and/or the hash and commit message if the commit fixes
   a bug in a previous commit. Multiple `Fixes:` lines may be added if
@@ -132,7 +132,7 @@ $ git merge --ff-only origin/v1.x
 Apply external patches
 
 ```text
-$ curl https://github.com/iojs/io.js/pull/xxx.patch | git am --whitespace=fix
+$ curl -L https://github.com/iojs/io.js/pull/xxx.patch | git am --whitespace=fix
 ```
 
 Check and re-review the changes
@@ -212,3 +212,14 @@ Time to push it:
 ```text
 $ git push origin v1.x
 ```
+
+### I just made a mistake
+
+With git, there's a way to override remote trees by force pushing
+(`git push -f`). This should generally be seen as forbidden (since
+you're rewriting history on a repository other people are working
+against) but is allowed for simpler slip-ups such as typos in commit
+messages. However, you are only allowed to force push to any io.js
+branch within 10 minutes from your original push. If someone else
+pushes to the branch your commit lives in or the 10 minute period
+passes, consider the commit final.

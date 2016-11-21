@@ -1189,7 +1189,9 @@ var relativeTests = [
   ['http://example.com/b//c//d;p?q#blarg',
    'http:/a/b/c/d',
    'http://example.com/a/b/c/d'],
-  ['/foo/bar/baz', '/../etc/passwd', '/etc/passwd']
+  ['/foo/bar/baz', '/../etc/passwd', '/etc/passwd'],
+  ['http://localhost', 'file:///Users/foo', 'file:///Users/foo'],
+  ['http://localhost', 'file://foo/Users', 'file://foo/Users']
 ];
 relativeTests.forEach(function(relativeTest) {
   var a = url.resolve(relativeTest[0], relativeTest[1]),
@@ -1557,3 +1559,20 @@ relativeTests2.forEach(function(relativeTest) {
                'format(' + relativeTest[1] + ') == ' + expected +
                '\nactual:' + actual);
 });
+
+
+
+// https://github.com/iojs/io.js/pull/1036
+var throws = [
+  undefined,
+  null,
+  true,
+  false,
+  0,
+  function () {}
+];
+for (var i = 0; i < throws.length; i++) {
+  assert.throws(function () { url.format(throws[i]); }, TypeError);
+};
+assert(url.format('') === '');
+assert(url.format({}) === '');

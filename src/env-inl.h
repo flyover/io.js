@@ -153,10 +153,14 @@ inline Environment* Environment::GetCurrent(
   return static_cast<Environment*>(info.Data().As<v8::External>()->Value());
 }
 
+template <typename T>
 inline Environment* Environment::GetCurrent(
-    const v8::PropertyCallbackInfo<v8::Value>& info) {
+    const v8::PropertyCallbackInfo<T>& info) {
   ASSERT(info.Data()->IsExternal());
-  return static_cast<Environment*>(info.Data().As<v8::External>()->Value());
+  // XXX(bnoordhuis) Work around a g++ 4.9.2 template type inferrer bug
+  // when the expression is written as info.Data().As<v8::External>().
+  v8::Local<v8::Value> data = info.Data();
+  return static_cast<Environment*>(data.As<v8::External>()->Value());
 }
 
 inline Environment::Environment(v8::Local<v8::Context> context,
@@ -165,6 +169,7 @@ inline Environment::Environment(v8::Local<v8::Context> context,
       isolate_data_(IsolateData::GetOrCreate(context->GetIsolate(), loop)),
       using_smalloc_alloc_cb_(false),
       using_domains_(false),
+      using_abort_on_uncaught_exc_(false),
       using_asyncwrap_(false),
       printed_error_(false),
       debugger_agent_(this),
@@ -172,6 +177,7 @@ inline Environment::Environment(v8::Local<v8::Context> context,
   // We'll be creating new objects so make sure we've entered the context.
   v8::HandleScope handle_scope(isolate());
   v8::Context::Scope context_scope(context);
+  set_as_external(v8::External::New(isolate(), this));
   set_binding_cache_object(v8::Object::New(isolate()));
   set_module_load_list_array(v8::Array::New(isolate()));
   RB_INIT(&cares_task_list_);
@@ -283,6 +289,14 @@ inline void Environment::set_using_smalloc_alloc_cb(bool value) {
   using_smalloc_alloc_cb_ = value;
 }
 
+inline bool Environment::using_abort_on_uncaught_exc() const {
+  return using_abort_on_uncaught_exc_;
+}
+
+inline void Environment::set_using_abort_on_uncaught_exc(bool value) {
+  using_abort_on_uncaught_exc_ = value;
+}
+
 inline bool Environment::using_domains() const {
   return using_domains_;
 }
@@ -387,13 +401,7 @@ inline void Environment::ThrowUVException(int errorno,
 inline v8::Local<v8::FunctionTemplate>
     Environment::NewFunctionTemplate(v8::FunctionCallback callback,
                                      v8::Local<v8::Signature> signature) {
-  v8::Local<v8::External> external;
-  if (external_.IsEmpty()) {
-    external = v8::External::New(isolate(), this);
-    external_.Reset(isolate(), external);
-  } else {
-    external = StrongPersistentToLocal(external_);
-  }
+  v8::Local<v8::External> external = as_external();
   return v8::FunctionTemplate::New(isolate(), callback, external, signature);
 }
 

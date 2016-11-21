@@ -1,6 +1,6 @@
 # util
 
-    Stability: 4 - API Frozen
+    Stability: 2 - Stable
 
 These functions are in the module `'util'`. Use `require('util')` to
 access them.
@@ -54,7 +54,7 @@ argument. Supported placeholders are:
 * `%s` - String.
 * `%d` - Number (both integer and float).
 * `%j` - JSON.  Replaced with the string `'[Circular]'` if the argument
-         contains circular references.
+contains circular references.
 * `%%` - single percent sign (`'%'`). This does not consume an argument.
 
 If the placeholder does not have a corresponding argument, the placeholder is
@@ -63,8 +63,8 @@ not replaced.
     util.format('%s:%s', 'foo'); // 'foo:%s'
 
 If there are more arguments than placeholders, the extra arguments are
-converted to strings with `util.inspect()` and these strings are concatenated,
-delimited by a space.
+coerced to strings (for objects and symbols, `util.inspect()` is used)
+and then concatenated, delimited by a space.
 
     util.format('%s:%s', 'foo', 'bar', 'baz'); // 'foo:bar baz'
 
@@ -328,7 +328,8 @@ Returns `true` if the given "object" is `undefined`. `false` otherwise.
 
 ## util.isObject(object)
 
-Returns `true` if the given "object" is strictly an `Object`. `false` otherwise.
+Returns `true` if the given "object" is strictly an `Object` __and__ not a
+`Function`. `false` otherwise.
 
     var util = require('util');
 
@@ -338,6 +339,8 @@ Returns `true` if the given "object" is strictly an `Object`. `false` otherwise.
       // false
     util.isObject({})
       // true
+    util.isObject(function(){})
+      // false
 
 
 ## util.isFunction(object)

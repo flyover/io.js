@@ -64,6 +64,7 @@ class SecureContext : public BaseObject {
   static const int kMaxSessionSize = 10 * 1024;
 
  protected:
+  static const int64_t kExternalSize = sizeof(SSL_CTX);
 
   static void New(const v8::FunctionCallbackInfo<v8::Value>& args);
   static void Init(const v8::FunctionCallbackInfo<v8::Value>& args);
@@ -84,6 +85,8 @@ class SecureContext : public BaseObject {
   static void LoadPKCS12(const v8::FunctionCallbackInfo<v8::Value>& args);
   static void GetTicketKeys(const v8::FunctionCallbackInfo<v8::Value>& args);
   static void SetTicketKeys(const v8::FunctionCallbackInfo<v8::Value>& args);
+  static void SetFreeListLength(
+      const v8::FunctionCallbackInfo<v8::Value>& args);
   static void CtxGetter(v8::Local<v8::String> property,
                         const v8::PropertyCallbackInfo<v8::Value>& info);
 
@@ -97,10 +100,12 @@ class SecureContext : public BaseObject {
         cert_(nullptr),
         issuer_(nullptr) {
     MakeWeak<SecureContext>(this);
+    env->isolate()->AdjustAmountOfExternalAllocatedMemory(kExternalSize);
   }
 
   void FreeCTXMem() {
     if (ctx_) {
+      env()->isolate()->AdjustAmountOfExternalAllocatedMemory(-kExternalSize);
       if (ctx_->cert_store == root_cert_store) {
         // SSL_CTX_free() will attempt to free the cert_store as well.
         // Since we want our root_cert_store to stay around forever
@@ -140,14 +145,12 @@ class SSLWrap {
         session_callbacks_(false),
         new_session_wait_(false) {
     ssl_ = SSL_new(sc->ctx_);
+    env_->isolate()->AdjustAmountOfExternalAllocatedMemory(kExternalSize);
     CHECK_NE(ssl_, nullptr);
   }
 
   virtual ~SSLWrap() {
-    if (ssl_ != nullptr) {
-      SSL_free(ssl_);
-      ssl_ = nullptr;
-    }
+    DestroySSL();
     if (next_sess_ != nullptr) {
       SSL_SESSION_free(next_sess_);
       next_sess_ = nullptr;
@@ -169,6 +172,12 @@ class SSLWrap {
   inline bool is_waiting_new_session() const { return new_session_wait_; }
 
  protected:
+  // Size allocated by OpenSSL: one for SSL structure, one for SSL3_STATE and
+  // some for buffers.
+  // NOTE: Actually it is much more than this
+  static const int64_t kExternalSize =
+      sizeof(SSL) + sizeof(SSL3_STATE) + 42 * 1024;
+
   static void InitNPN(SecureContext* sc);
   static void AddMethods(Environment* env, v8::Handle<v8::FunctionTemplate> t);
 
@@ -220,6 +229,8 @@ class SSLWrap {
   static int TLSExtStatusCallback(SSL* s, void* arg);
   static void SSLGetter(v8::Local<v8::String> property,
                         const v8::PropertyCallbackInfo<v8::Value>& info);
+
+  void DestroySSL();
 
   inline Environment* ssl_env() const {
     return env_;

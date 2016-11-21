@@ -31,6 +31,7 @@
     startup.processAssert();
     startup.processConfig();
     startup.processNextTick();
+    startup.processPromises();
     startup.processStdio();
     startup.processKillAndExit();
     startup.processSignalHandlers();
@@ -42,7 +43,7 @@
 
     startup.processRawDebug();
 
-    startup.resolveArgv0();
+    process.argv[0] = process.execPath;
 
     // There are various modes that Node can run in. The most common two
     // are running from a script and running the REPL - but there are a few
@@ -67,17 +68,13 @@
       var d = NativeModule.require('_debug_agent');
       d.start();
 
-    } else if (process._eval != null) {
-      // User passed '-e' or '--eval' arguments to Node.
-      evalScript('[eval]');
-    } else if (process.argv[1]) {
-      // make process.argv[1] into a full path
-      var path = NativeModule.require('path');
-      process.argv[1] = path.resolve(process.argv[1]);
+    } else {
+      // There is user code to be run
 
       // If this is a worker in cluster mode, start up the communication
-      // channel.
-      if (process.env.NODE_UNIQUE_ID) {
+      // channel. This needs to be done before any user code gets executed
+      // (including preload modules).
+      if (process.argv[1] && process.env.NODE_UNIQUE_ID) {
         var cluster = NativeModule.require('cluster');
         cluster._setupWorker();
 
@@ -85,66 +82,83 @@
         delete process.env.NODE_UNIQUE_ID;
       }
 
-      var Module = NativeModule.require('module');
-
-      if (global.v8debug &&
-          process.execArgv.some(function(arg) {
-            return arg.match(/^--debug-brk(=[0-9]*)?$/);
-          })) {
-
-        // XXX Fix this terrible hack!
-        //
-        // Give the client program a few ticks to connect.
-        // Otherwise, there's a race condition where `node debug foo.js`
-        // will not be able to connect in time to catch the first
-        // breakpoint message on line 1.
-        //
-        // A better fix would be to somehow get a message from the
-        // global.v8debug object about a connection, and runMain when
-        // that occurs.  --isaacs
-
-        var debugTimeout = +process.env.NODE_DEBUG_TIMEOUT || 50;
-        setTimeout(Module.runMain, debugTimeout);
-
-      } else {
-        // Main entry point into most programs:
-        Module.runMain();
+      // Load any preload modules
+      if (process._preload_modules) {
+        var Module = NativeModule.require('module');
+        process._preload_modules.forEach(function(module) {
+          Module._load(module);
+        });
       }
 
-    } else {
-      var Module = NativeModule.require('module');
+      if (process._eval != null) {
+        // User passed '-e' or '--eval' arguments to Node.
+        evalScript('[eval]');
+      } else if (process.argv[1]) {
+        // make process.argv[1] into a full path
+        var path = NativeModule.require('path');
+        process.argv[1] = path.resolve(process.argv[1]);
 
-      // If -i or --interactive were passed, or stdin is a TTY.
-      if (process._forceRepl || NativeModule.require('tty').isatty(0)) {
-        // REPL
-        var opts = {
-          useGlobal: true,
-          ignoreUndefined: false
-        };
-        if (parseInt(process.env['NODE_NO_READLINE'], 10)) {
-          opts.terminal = false;
+        var Module = NativeModule.require('module');
+
+        if (global.v8debug &&
+            process.execArgv.some(function(arg) {
+              return arg.match(/^--debug-brk(=[0-9]*)?$/);
+            })) {
+
+          // XXX Fix this terrible hack!
+          //
+          // Give the client program a few ticks to connect.
+          // Otherwise, there's a race condition where `node debug foo.js`
+          // will not be able to connect in time to catch the first
+          // breakpoint message on line 1.
+          //
+          // A better fix would be to somehow get a message from the
+          // global.v8debug object about a connection, and runMain when
+          // that occurs.  --isaacs
+
+          var debugTimeout = +process.env.NODE_DEBUG_TIMEOUT || 50;
+          setTimeout(Module.runMain, debugTimeout);
+
+        } else {
+          // Main entry point into most programs:
+          Module.runMain();
         }
-        if (parseInt(process.env['NODE_DISABLE_COLORS'], 10)) {
-          opts.useColors = false;
-        }
-        var repl = Module.requireRepl().start(opts);
-        repl.on('exit', function() {
-          process.exit();
-        });
 
       } else {
-        // Read all of stdin - execute it.
-        process.stdin.setEncoding('utf8');
+        var Module = NativeModule.require('module');
 
-        var code = '';
-        process.stdin.on('data', function(d) {
-          code += d;
-        });
+        // If -i or --interactive were passed, or stdin is a TTY.
+        if (process._forceRepl || NativeModule.require('tty').isatty(0)) {
+          // REPL
+          var opts = {
+            useGlobal: true,
+            ignoreUndefined: false
+          };
+          if (parseInt(process.env['NODE_NO_READLINE'], 10)) {
+            opts.terminal = false;
+          }
+          if (parseInt(process.env['NODE_DISABLE_COLORS'], 10)) {
+            opts.useColors = false;
+          }
+          var repl = Module.requireRepl().start(opts);
+          repl.on('exit', function() {
+            process.exit();
+          });
 
-        process.stdin.on('end', function() {
-          process._eval = code;
-          evalScript('[stdin]');
-        });
+        } else {
+          // Read all of stdin - execute it.
+          process.stdin.setEncoding('utf8');
+
+          var code = '';
+          process.stdin.on('data', function(d) {
+            code += d;
+          });
+
+          process.stdin.on('end', function() {
+            process._eval = code;
+            evalScript('[stdin]');
+          });
+        }
       }
     }
   }
@@ -160,35 +174,13 @@
   };
 
   startup.globalTimeouts = function() {
-    global.setTimeout = function() {
-      var t = NativeModule.require('timers');
-      return t.setTimeout.apply(this, arguments);
-    };
-
-    global.setInterval = function() {
-      var t = NativeModule.require('timers');
-      return t.setInterval.apply(this, arguments);
-    };
-
-    global.clearTimeout = function() {
-      var t = NativeModule.require('timers');
-      return t.clearTimeout.apply(this, arguments);
-    };
-
-    global.clearInterval = function() {
-      var t = NativeModule.require('timers');
-      return t.clearInterval.apply(this, arguments);
-    };
-
-    global.setImmediate = function() {
-      var t = NativeModule.require('timers');
-      return t.setImmediate.apply(this, arguments);
-    };
-
-    global.clearImmediate = function() {
-      var t = NativeModule.require('timers');
-      return t.clearImmediate.apply(this, arguments);
-    };
+    const timers = NativeModule.require('timers');
+    global.clearImmediate = timers.clearImmediate;
+    global.clearInterval = timers.clearInterval;
+    global.clearTimeout = timers.clearTimeout;
+    global.setImmediate = timers.setImmediate;
+    global.setInterval = timers.setInterval;
+    global.setTimeout = timers.setTimeout;
   };
 
   startup.globalConsole = function() {
@@ -208,6 +200,14 @@
   };
 
   startup.processFatal = function() {
+    process._makeCallbackAbortOnUncaught = function() {
+      try {
+        return this[1].apply(this[0], arguments);
+      } catch (err) {
+        process._fatalException(err);
+      }
+    };
+
     process._fatalException = function(er) {
       var caught;
 
@@ -264,8 +264,11 @@
     });
   };
 
+  var addPendingUnhandledRejection;
+  var hasBeenNotifiedProperty = new WeakMap();
   startup.processNextTick = function() {
     var nextTickQueue = [];
+    var pendingUnhandledRejections = [];
     var microtasksScheduled = false;
 
     // Used to run V8's micro task queue.
@@ -318,7 +321,8 @@
       microtasksScheduled = false;
       _runMicrotasks();
 
-      if (tickInfo[kIndex] < tickInfo[kLength])
+      if (tickInfo[kIndex] < tickInfo[kLength] ||
+          emitPendingUnhandledRejections())
         scheduleMicrotasks();
     }
 
@@ -327,52 +331,66 @@
     function _tickCallback() {
       var callback, threw, tock;
 
-      scheduleMicrotasks();
-
-      while (tickInfo[kIndex] < tickInfo[kLength]) {
-        tock = nextTickQueue[tickInfo[kIndex]++];
-        callback = tock.callback;
-        threw = true;
-        try {
-          callback();
-          threw = false;
-        } finally {
-          if (threw)
+      do {
+        while (tickInfo[kIndex] < tickInfo[kLength]) {
+          tock = nextTickQueue[tickInfo[kIndex]++];
+          callback = tock.callback;
+          threw = true;
+          try {
+            if (tock.args === undefined)
+              callback();
+            else
+              callback.apply(null, tock.args);
+            threw = false;
+          } finally {
+            if (threw)
+              tickDone();
+          }
+          if (1e4 < tickInfo[kIndex])
             tickDone();
         }
-        if (1e4 < tickInfo[kIndex])
-          tickDone();
-      }
-
-      tickDone();
+        tickDone();
+        _runMicrotasks();
+        emitPendingUnhandledRejections();
+      } while (tickInfo[kLength] !== 0);
     }
 
     function _tickDomainCallback() {
       var callback, domain, threw, tock;
 
-      scheduleMicrotasks();
-
-      while (tickInfo[kIndex] < tickInfo[kLength]) {
-        tock = nextTickQueue[tickInfo[kIndex]++];
-        callback = tock.callback;
-        domain = tock.domain;
-        if (domain)
-          domain.enter();
-        threw = true;
-        try {
-          callback();
-          threw = false;
-        } finally {
-          if (threw)
+      do {
+        while (tickInfo[kIndex] < tickInfo[kLength]) {
+          tock = nextTickQueue[tickInfo[kIndex]++];
+          callback = tock.callback;
+          domain = tock.domain;
+          if (domain)
+            domain.enter();
+          threw = true;
+          try {
+            if (tock.args === undefined)
+              callback();
+            else
+              callback.apply(null, tock.args);
+            threw = false;
+          } finally {
+            if (threw)
+              tickDone();
+          }
+          if (1e4 < tickInfo[kIndex])
             tickDone();
+          if (domain)
+            domain.exit();
         }
-        if (1e4 < tickInfo[kIndex])
-          tickDone();
-        if (domain)
-          domain.exit();
-      }
+        tickDone();
+        _runMicrotasks();
+        emitPendingUnhandledRejections();
+      } while (tickInfo[kLength] !== 0);
+    }
 
-      tickDone();
+    function TickObject(c, args) {
+      this.callback = c;
+      this.domain = process.domain || null;
+      this.args = args;
     }
 
     function nextTick(callback) {
@@ -380,36 +398,95 @@
       if (process._exiting)
         return;
 
-      var obj = {
-        callback: callback,
-        domain: process.domain || null
-      };
+      var args = undefined;
+      if (arguments.length > 1) {
+        args = [];
+        for (var i = 1; i < arguments.length; i++)
+          args.push(arguments[i]);
+      }
 
-      nextTickQueue.push(obj);
+      nextTickQueue.push(new TickObject(callback, args));
       tickInfo[kLength]++;
     }
+
+    function emitPendingUnhandledRejections() {
+      var hadListeners = false;
+      while (pendingUnhandledRejections.length > 0) {
+        var promise = pendingUnhandledRejections.shift();
+        var reason = pendingUnhandledRejections.shift();
+        if (hasBeenNotifiedProperty.get(promise) === false) {
+          hasBeenNotifiedProperty.set(promise, true);
+          if (!process.emit('unhandledRejection', reason, promise)) {
+            // Nobody is listening.
+            // TODO(petkaantonov) Take some default action, see #830
+          } else
+            hadListeners = true;
+        }
+      }
+      return hadListeners;
+    }
+
+    addPendingUnhandledRejection = function(promise, reason) {
+      pendingUnhandledRejections.push(promise, reason);
+      scheduleMicrotasks();
+    };
+  };
+
+  startup.processPromises = function() {
+    var promiseRejectEvent = process._promiseRejectEvent;
+
+    function unhandledRejection(promise, reason) {
+      hasBeenNotifiedProperty.set(promise, false);
+      addPendingUnhandledRejection(promise, reason);
+    }
+
+    function rejectionHandled(promise) {
+      var hasBeenNotified = hasBeenNotifiedProperty.get(promise);
+      if (hasBeenNotified !== undefined) {
+        hasBeenNotifiedProperty.delete(promise);
+        if (hasBeenNotified === true)
+          process.emit('rejectionHandled', promise);
+      }
+    }
+
+    process._setupPromises(function(event, promise, reason) {
+      if (event === promiseRejectEvent.unhandled)
+        unhandledRejection(promise, reason);
+      else if (event === promiseRejectEvent.handled)
+        process.nextTick(function() {
+          rejectionHandled(promise);
+        });
+      else
+        NativeModule.require('assert').fail('unexpected PromiseRejectEvent');
+    });
   };
 
   function evalScript(name) {
     var Module = NativeModule.require('module');
     var path = NativeModule.require('path');
-    var cwd = process.cwd();
+
+    try {
+      var cwd = process.cwd();
+    } catch (e) {
+      // getcwd(3) can fail if the current working directory has been deleted.
+      // Fall back to the directory name of the (absolute) executable path.
+      // It's not really correct but what are the alternatives?
+      var cwd = path.dirname(process.execPath);
+    }
 
     var module = new Module(name);
     module.filename = path.join(cwd, name);
     module.paths = Module._nodeModulePaths(cwd);
     var script = process._eval;
-    if (!Module._contextLoad) {
-      var body = script;
-      script = 'global.__filename = ' + JSON.stringify(name) + ';\n' +
-               'global.exports = exports;\n' +
-               'global.module = module;\n' +
-               'global.__dirname = __dirname;\n' +
-               'global.require = require;\n' +
-               'return require("vm").runInThisContext(' +
-               JSON.stringify(body) + ', { filename: ' +
-               JSON.stringify(name) + ' });\n';
-    }
+    var body = script;
+    script = 'global.__filename = ' + JSON.stringify(name) + ';\n' +
+             'global.exports = exports;\n' +
+             'global.module = module;\n' +
+             'global.__dirname = __dirname;\n' +
+             'global.require = require;\n' +
+             'return require("vm").runInThisContext(' +
+             JSON.stringify(body) + ', { filename: ' +
+             JSON.stringify(name) + ' });\n';
     var result = module._compile(script, name + '-wrapper');
     if (process._print_eval) console.log(result);
   }
@@ -546,6 +623,8 @@
               writable: false
             });
           }
+          // Make sure the stdin can't be `.end()`-ed
+          stdin._writableState.ended = true;
           break;
 
         default:
@@ -700,23 +779,6 @@
     };
   };
 
-
-  startup.resolveArgv0 = function() {
-    var cwd = process.cwd();
-    var isWindows = process.platform === 'win32';
-
-    // Make process.argv[0] into a full path, but only touch argv[0] if it's
-    // not a system $PATH lookup.
-    // TODO: Make this work on Windows as well.  Note that "node" might
-    // execute cwd\node.exe, or some %PATH%\node.exe on Windows,
-    // and that every directory has its own cwd, so d:node.exe is valid.
-    var argv0 = process.argv[0];
-    if (!isWindows && argv0.indexOf('/') !== -1 && argv0.charAt(0) !== '/') {
-      var path = NativeModule.require('path');
-      process.argv[0] = path.join(cwd, process.argv[0]);
-    }
-  };
-
   // Below you find a minimal module system, which is used to load the node
   // core modules found in lib/*.js. All core modules are compiled into the
   // node binary, so they can be loaded faster.
@@ -768,6 +830,27 @@
   NativeModule.exists = function(id) {
     return NativeModule._source.hasOwnProperty(id);
   };
+
+  const EXPOSE_INTERNALS = process.execArgv.some(function(arg) {
+    return arg.match(/^--expose[-_]internals$/);
+  });
+
+  if (EXPOSE_INTERNALS) {
+    NativeModule.nonInternalExists = NativeModule.exists;
+
+    NativeModule.isInternal = function(id) {
+      return false;
+    };
+  } else {
+    NativeModule.nonInternalExists = function(id) {
+      return NativeModule.exists(id) && !NativeModule.isInternal(id);
+    };
+
+    NativeModule.isInternal = function(id) {
+      return id.startsWith('internal/');
+    };
+  }
+
 
   NativeModule.getSource = function(id) {
     return NativeModule._source[id];

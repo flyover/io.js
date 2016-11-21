@@ -1,13 +1,13 @@
 var common = require('../common');
-
-if (!common.opensslCli) {
-  console.error('Skipping because node compiled without OpenSSL CLI.');
-  process.exit(0);
-}
-
 var assert = require('assert');
-var spawn = require('child_process').spawn;
+
+if (!common.hasCrypto) {
+  console.log('1..0 # Skipped: missing crypto');
+  process.exit();
+}
 var tls = require('tls');
+
+var spawn = require('child_process').spawn;
 var fs = require('fs');
 var key =  fs.readFileSync(common.fixturesDir + '/keys/agent2-key.pem');
 var cert = fs.readFileSync(common.fixturesDir + '/keys/agent2-cert.pem');
@@ -61,8 +61,9 @@ function test(keylen, expectedCipher, cb) {
 }
 
 function test512() {
-  test(512, 'DHE-RSA-AES128-SHA256', test1024);
-  ntests++;
+  assert.throws(function() {
+    test(512, 'DHE-RSA-AES128-SHA256', null);
+  }, /DH parameter is less than 1024 bits/);
 }
 
 function test1024() {
@@ -76,12 +77,13 @@ function test2048() {
 }
 
 function testError() {
-  test('error', 'ECDHE-RSA-AES128-SHA256', null);
+  test('error', 'ECDHE-RSA-AES128-SHA256', test512);
   ntests++;
 }
 
-test512();
+test1024();
 
 process.on('exit', function() {
   assert.equal(ntests, nsuccess);
+  assert.equal(ntests, 3);
 });

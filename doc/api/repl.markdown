@@ -1,6 +1,6 @@
 # REPL
 
-    Stability: 3 - Stable
+    Stability: 2 - Stable
 
 A Read-Eval-Print-Loop (REPL) is available both as a standalone program and
 easily includable in other programs. The REPL provides a way to interactively
@@ -165,6 +165,9 @@ Example of listening for `reset`:
 
 Inside the REPL, Control+D will exit.  Multi-line expressions can be input.
 Tab completion is supported for both global and local variables.
+
+Core modules will be loaded on-demand into the environment. For example,
+accessing `fs` will `require()` the `fs` module as `global.fs`.
 
 The special variable `_` (underscore) contains the result of the last expression.
 

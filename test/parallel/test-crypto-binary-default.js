@@ -6,13 +6,12 @@ var common = require('../common');
 var assert = require('assert');
 var constants = require('constants');
 
-try {
-  var crypto = require('crypto');
-  var tls = require('tls');
-} catch (e) {
-  console.log('Not compiled with OPENSSL support.');
+if (!common.hasCrypto) {
+  console.log('1..0 # Skipped: missing crypto');
   process.exit();
 }
+var crypto = require('crypto');
+var tls = require('tls');
 
 crypto.DEFAULT_ENCODING = 'binary';
 
@@ -28,18 +27,6 @@ var rsaPubPem = fs.readFileSync(common.fixturesDir + '/test_rsa_pubkey.pem',
     'ascii');
 var rsaKeyPem = fs.readFileSync(common.fixturesDir + '/test_rsa_privkey.pem',
     'ascii');
-
-// TODO(indutny): Move to a separate test eventually
-try {
-  var context = tls.createSecureContext({
-    key: keyPem,
-    cert: certPem,
-    ca: caPem
-  });
-} catch (e) {
-  console.log('Not compiled with OPENSSL support.');
-  process.exit();
-}
 
 // PFX tests
 assert.doesNotThrow(function() {

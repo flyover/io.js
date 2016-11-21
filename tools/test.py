@@ -29,6 +29,7 @@
 
 
 import imp
+import logging
 import optparse
 import os
 import platform
@@ -46,6 +47,8 @@ import errno
 from os.path import join, dirname, abspath, basename, isdir, exists
 from datetime import datetime
 from Queue import Queue, Empty
+
+logger = logging.getLogger('testrunner')
 
 VERBOSE = False
 
@@ -237,7 +240,7 @@ class DotsProgressIndicator(SimpleProgressIndicator):
 class TapProgressIndicator(SimpleProgressIndicator):
 
   def Starting(self):
-    print '1..%i' % len(self.cases)
+    logger.info('1..%i' % len(self.cases))
     self._done = 0
 
   def AboutToRun(self, case):
@@ -247,13 +250,13 @@ class TapProgressIndicator(SimpleProgressIndicator):
     self._done += 1
     command = basename(output.command[-1])
     if output.UnexpectedOutput():
-      print 'not ok %i - %s' % (self._done, command)
+      logger.info('not ok %i - %s' % (self._done, command))
       for l in output.output.stderr.splitlines():
-        print '#' + l
+        logger.info('#' + l)
       for l in output.output.stdout.splitlines():
-        print '#' + l
+        logger.info('#' + l)
     else:
-      print 'ok %i - %s' % (self._done, command)
+      logger.info('ok %i - %s' % (self._done, command))
 
     duration = output.test.duration
 
@@ -261,9 +264,9 @@ class TapProgressIndicator(SimpleProgressIndicator):
     total_seconds = (duration.microseconds +
       (duration.seconds + duration.days * 24 * 3600) * 10**6) / 10**6
 
-    print '  ---'
-    print '  duration_ms: %d.%d' % (total_seconds, duration.microseconds / 1000)
-    print '  ...'
+    logger.info('  ---')
+    logger.info('  duration_ms: %d.%d' % (total_seconds, duration.microseconds / 1000))
+    logger.info('  ...')
 
   def Done(self):
     pass
@@ -726,8 +729,9 @@ FLAGS = {
     'debug'   : ['--enable-slow-asserts', '--debug-code', '--verify-heap'],
     'release' : []}
 TIMEOUT_SCALEFACTOR = {
-    'debug'   : 4,
-    'release' : 1 }
+    'armv6' : { 'debug' : 12, 'release' : 3 },  # The ARM buildbots are slow.
+    'arm'   : { 'debug' :  8, 'release' : 2 },
+    'ia32'  : { 'debug' :  4, 'release' : 1 } }
 
 
 class Context(object):
@@ -767,7 +771,7 @@ class Context(object):
     return testcase.variant_flags + FLAGS[mode]
 
   def GetTimeout(self, mode):
-    return self.timeout * TIMEOUT_SCALEFACTOR[mode]
+    return self.timeout * TIMEOUT_SCALEFACTOR[ARCH_GUESS or 'ia32'][mode]
 
 def RunTestCases(cases_to_run, progress, tasks):
   progress = PROGRESS_INDICATORS[progress](cases_to_run)
@@ -1216,6 +1220,8 @@ def BuildOptions():
       default='release')
   result.add_option("-v", "--verbose", help="Verbose output",
       default=False, action="store_true")
+  result.add_option('--logfile', dest='logfile',
+      help='write test output to file. NOTE: this only applies the tap progress indicator')
   result.add_option("-S", dest="scons_flags", help="Flag to pass through to scons",
       default=[], action="append")
   result.add_option("-p", "--progress",
@@ -1358,6 +1364,13 @@ def Main():
   if not ProcessOptions(options):
     parser.print_help()
     return 1
+
+  ch = logging.StreamHandler(sys.stdout)
+  logger.addHandler(ch)
+  logger.setLevel('INFO')
+  if options.logfile:
+    fh = logging.FileHandler(options.logfile)
+    logger.addHandler(fh)
 
   workspace = abspath(join(dirname(sys.argv[0]), '..'))
   suites = GetSuites(join(workspace, 'test'))

@@ -5,6 +5,9 @@ PYTHON ?= python
 DESTDIR ?=
 SIGN ?=
 PREFIX ?= /usr/local
+STAGINGSERVER ?= iojs-www
+
+OSTYPE := $(shell uname -s | tr '[A-Z]' '[a-z]')
 
 # Determine EXEEXT
 EXEEXT := $(shell $(PYTHON) -c \
@@ -56,7 +59,7 @@ uninstall:
 	$(PYTHON) tools/install.py $@ '$(DESTDIR)' '$(PREFIX)'
 
 clean:
-	-rm -rf out/Makefile $(NODE_EXE) $(NODE_G_EXE) out/$(BUILDTYPE)/$(NODE_EXE) blog.html email.md
+	-rm -rf out/Makefile $(NODE_EXE) $(NODE_G_EXE) out/$(BUILDTYPE)/$(NODE_EXE)
 	@if [ -d out ]; then find out/ -name '*.o' -o -name '*.a' | xargs rm -rf; fi
 	-rm -rf node_modules
 
@@ -64,13 +67,18 @@ distclean:
 	-rm -rf out
 	-rm -f config.gypi icu_config.gypi
 	-rm -f config.mk
-	-rm -rf $(NODE_EXE) $(NODE_G_EXE) blog.html email.md
+	-rm -rf $(NODE_EXE) $(NODE_G_EXE)
 	-rm -rf node_modules
 	-rm -rf deps/icu
 	-rm -rf deps/icu4c*.tgz deps/icu4c*.zip deps/icu-tmp
 	-rm -f $(BINARYTAR).* $(TARBALL).*
 
-test: all
+check: test
+
+cctest: all
+	@out/$(BUILDTYPE)/$@
+
+test: | cctest  # Depends on 'all'.
 	$(PYTHON) tools/test.py --mode=release message parallel sequential -J
 	$(MAKE) jslint
 	$(MAKE) cpplint
@@ -82,16 +90,16 @@ test-valgrind: all
 	$(PYTHON) tools/test.py --mode=release --valgrind sequential parallel message
 
 test/gc/node_modules/weak/build/Release/weakref.node: $(NODE_EXE)
-	./$(NODE_EXE) deps/npm/node_modules/node-gyp/bin/node-gyp rebuild \
+	$(NODE) deps/npm/node_modules/node-gyp/bin/node-gyp rebuild \
 		--directory="$(shell pwd)/test/gc/node_modules/weak" \
 		--nodedir="$(shell pwd)"
 
 build-addons: $(NODE_EXE)
 	rm -rf test/addons/doc-*/
-	./$(NODE_EXE) tools/doc/addon-verify.js
+	$(NODE) tools/doc/addon-verify.js
 	$(foreach dir, \
 			$(sort $(dir $(wildcard test/addons/*/*.gyp))), \
-			./$(NODE_EXE) deps/npm/node_modules/node-gyp/bin/node-gyp rebuild \
+			$(NODE) deps/npm/node_modules/node-gyp/bin/node-gyp rebuild \
 					--directory="$(shell pwd)/$(dir)" \
 					--nodedir="$(shell pwd)" && ) echo "build done"
 
@@ -106,8 +114,8 @@ test-all: test-build test/gc/node_modules/weak/build/Release/weakref.node
 test-all-valgrind: test-build
 	$(PYTHON) tools/test.py --mode=debug,release --valgrind
 
-test-ci: test-build
-	$(PYTHON) tools/test.py -J parallel sequential message addons
+test-ci:
+	$(PYTHON) tools/test.py -p tap --logfile test.tap --mode=release message parallel sequential
 
 test-release: test-build
 	$(PYTHON) tools/test.py --mode=release
@@ -118,10 +126,10 @@ test-debug: test-build
 test-message: test-build
 	$(PYTHON) tools/test.py message
 
-test-simple: all
+test-simple: | cctest  # Depends on 'all'.
 	$(PYTHON) tools/test.py parallel sequential
 
-test-pummel: all wrk
+test-pummel: all
 	$(PYTHON) tools/test.py pummel
 
 test-internet: all
@@ -146,7 +154,7 @@ test-npm: $(NODE_EXE)
 	     rm -rf npm-cache npm-tmp npm-prefix
 
 test-npm-publish: $(NODE_EXE)
-	npm_package_config_publishtest=true ./$(NODE_EXE) deps/npm/test/run.js
+	npm_package_config_publishtest=true $(NODE) deps/npm/test/run.js
 
 test-addons: test-build
 	$(PYTHON) tools/test.py --mode=release addons
@@ -178,10 +186,10 @@ out/doc/%: doc/%
 	cp -r $< $@
 
 out/doc/api/%.json: doc/api/%.markdown $(NODE_EXE)
-	out/Release/$(NODE_EXE) tools/doc/generate.js --format=json $< > $@
+	$(NODE) tools/doc/generate.js --format=json $< > $@
 
 out/doc/api/%.html: doc/api/%.markdown $(NODE_EXE)
-	out/Release/$(NODE_EXE) tools/doc/generate.js --format=html --template=doc/template.html $< > $@
+	$(NODE) tools/doc/generate.js --format=html --template=doc/template.html $< > $@
 
 docopen: out/doc/api/all.html
 	-google-chrome out/doc/api/all.html
@@ -191,14 +199,49 @@ docclean:
 
 RAWVER=$(shell $(PYTHON) tools/getnodeversion.py)
 VERSION=v$(RAWVER)
+
+# For nightly builds, you must set DISTTYPE to "nightly", "next-nightly" or
+# "custom". For the nightly and next-nightly case, you need to set DATESTRING
+# and COMMIT in order to properly name the build.
+# For the rc case you need to set CUSTOMTAG to an appropriate CUSTOMTAG number
+
+ifndef DISTTYPE
+DISTTYPE=release
+endif
+ifeq ($(DISTTYPE),release)
 FULLVERSION=$(VERSION)
-RELEASE=$(shell $(PYTHON) tools/getnodeisrelease.py)
+else # ifeq ($(DISTTYPE),release)
+ifeq ($(DISTTYPE),custom)
+ifndef CUSTOMTAG
+$(error CUSTOMTAG is not set for DISTTYPE=custom)
+endif # ifndef CUSTOMTAG
+TAG=$(CUSTOMTAG)
+else # ifeq ($(DISTTYPE),custom)
+ifndef DATESTRING
+$(error DATESTRING is not set for nightly)
+endif # ifndef DATESTRING
+ifndef COMMIT
+$(error COMMIT is not set for nightly)
+endif # ifndef COMMIT
+ifneq ($(DISTTYPE),nightly)
+ifneq ($(DISTTYPE),next-nightly)
+$(error DISTTYPE is not release, custom, nightly or next-nightly)
+endif # ifneq ($(DISTTYPE),next-nightly)
+endif # ifneq ($(DISTTYPE),nightly)
+TAG=$(DISTTYPE)$(DATESTRING)$(COMMIT)
+endif # ifeq ($(DISTTYPE),custom)
+FULLVERSION=$(VERSION)-$(TAG)
+endif # ifeq ($(DISTTYPE),release)
+
+DISTTYPEDIR ?= $(DISTTYPE)
+RELEASE=$(shell sed -ne 's/\#define NODE_VERSION_IS_RELEASE \([01]\)/\1/p' src/node_version.h)
 PLATFORM=$(shell uname | tr '[:upper:]' '[:lower:]')
 NPMVERSION=v$(shell cat deps/npm/package.json | grep '"version"' | sed 's/^[^:]*: "\([^"]*\)",.*/\1/')
+
 ifeq ($(findstring x86_64,$(shell uname -m)),x86_64)
 DESTCPU ?= x64
 else
-DESTCPU ?= ia32
+DESTCPU ?= x86
 endif
 ifeq ($(DESTCPU),x64)
 ARCH=x64
@@ -209,25 +252,24 @@ else
 ARCH=x86
 endif
 endif
-ifdef NIGHTLY
-TAG = nightly-$(NIGHTLY)
-FULLVERSION=$(VERSION)-$(TAG)
+
+# enforce "x86" over "ia32" as the generally accepted way of referring to 32-bit intel
+ifeq ($(ARCH),ia32)
+override ARCH=x86
 endif
+ifeq ($(DESTCPU),ia32)
+override DESTCPU=x86
+endif
+
 TARNAME=iojs-$(FULLVERSION)
 TARBALL=$(TARNAME).tar
 BINARYNAME=$(TARNAME)-$(PLATFORM)-$(ARCH)
 BINARYTAR=$(BINARYNAME).tar
+# OSX doesn't have xz installed by default, http://macpkg.sourceforge.net/
 XZ=$(shell which xz > /dev/null 2>&1; echo $$?)
-PKG=out/$(TARNAME).pkg
-packagemaker=/Developer/Applications/Utilities/PackageMaker.app/Contents/MacOS/PackageMaker
-
-PKGSRC=iojs-$(DESTCPU)-$(RAWVER).tgz
-ifdef NIGHTLY
-PKGSRC=iojs-$(DESTCPU)-$(RAWVER)-$(TAG).tgz
-endif
-
-dist: doc $(TARBALL) $(PKG)
-
+XZ_COMPRESSION ?= 9
+PKG=$(TARNAME).pkg
+PACKAGEMAKER ?= /Developer/Applications/Utilities/PackageMaker.app/Contents/MacOS/PackageMaker
 PKGDIR=out/dist-osx
 
 release-only:
@@ -242,58 +284,96 @@ release-only:
 		echo "" >&2 ; \
 		exit 1 ; \
 	fi
-	@if [ "$(NIGHTLY)" != "" -o "$(RELEASE)" = "1" ]; then \
+	@if [ "$(DISTTYPE)" != "release" -o "$(RELEASE)" = "1" ]; then \
 		exit 0; \
 	else \
 	  echo "" >&2 ; \
 		echo "#NODE_VERSION_IS_RELEASE is set to $(RELEASE)." >&2 ; \
-	  echo "Did you remember to update src/node_version.cc?" >&2 ; \
+	  echo "Did you remember to update src/node_version.h?" >&2 ; \
 	  echo "" >&2 ; \
 		exit 1 ; \
 	fi
 
-pkg: $(PKG)
-
 $(PKG): release-only
 	rm -rf $(PKGDIR)
 	rm -rf out/deps out/Release
-	$(PYTHON) ./configure --dest-cpu=ia32 --tag=$(TAG)
-	$(MAKE) install V=$(V) DESTDIR=$(PKGDIR)/32
-	rm -rf out/deps out/Release
 	$(PYTHON) ./configure --dest-cpu=x64 --tag=$(TAG)
 	$(MAKE) install V=$(V) DESTDIR=$(PKGDIR)
-	SIGN="$(APP_SIGN)" PKGDIR="$(PKGDIR)" bash tools/osx-codesign.sh
-	lipo $(PKGDIR)/32/usr/local/bin/iojs \
-		$(PKGDIR)/usr/local/bin/iojs \
-		-output $(PKGDIR)/usr/local/bin/iojs-universal \
-		-create
-	mv $(PKGDIR)/usr/local/bin/iojs-universal $(PKGDIR)/usr/local/bin/iojs
-	rm -rf $(PKGDIR)/32
-	cat tools/osx-pkg.pmdoc/index.xml.tmpl | sed -e 's|__iojsversion__|'$(FULLVERSION)'|g' | sed -e 's|__npmversion__|'$(NPMVERSION)'|g' > tools/osx-pkg.pmdoc/index.xml
-	$(packagemaker) \
-		--id "org.nodejs.Node" \
+	SIGN="$(CODESIGN_CERT)" PKGDIR="$(PKGDIR)" bash tools/osx-codesign.sh
+	cat tools/osx-pkg.pmdoc/index.xml.tmpl \
+		| sed -E "s/\\{iojsversion\\}/$(FULLVERSION)/g" \
+		| sed -E "s/\\{npmversion\\}/$(NPMVERSION)/g" \
+		> tools/osx-pkg.pmdoc/index.xml
+	$(PACKAGEMAKER) \
+		--id "org.iojs.pkg" \
 		--doc tools/osx-pkg.pmdoc \
 		--out $(PKG)
-	SIGN="$(INT_SIGN)" PKG="$(PKG)" bash tools/osx-productsign.sh
+	SIGN="$(PRODUCTSIGN_CERT)" PKG="$(PKG)" bash tools/osx-productsign.sh
+
+pkg: $(PKG)
+
+pkg-upload: pkg
+	ssh $(STAGINGSERVER) "mkdir -p staging/$(DISTTYPEDIR)/$(FULLVERSION)"
+	scp -p iojs-$(FULLVERSION).pkg $(STAGINGSERVER):staging/$(DISTTYPEDIR)/$(FULLVERSION)/iojs-$(FULLVERSION).pkg
+	ssh $(STAGINGSERVER) "touch staging/$(DISTTYPEDIR)/$(FULLVERSION)/iojs-$(FULLVERSION).pkg.done"
 
 $(TARBALL): release-only $(NODE_EXE) doc
-	git archive --format=tar --prefix=$(TARNAME)/ HEAD | tar xf -
+	git checkout-index -a -f --prefix=$(TARNAME)/
 	mkdir -p $(TARNAME)/doc/api
 	cp doc/iojs.1 $(TARNAME)/doc/iojs.1
 	cp -r out/doc/api/* $(TARNAME)/doc/api/
-	rm -rf $(TARNAME)/deps/v8/test # too big
+	rm -rf $(TARNAME)/deps/v8/{test,samples,tools/profviz} # too big
 	rm -rf $(TARNAME)/doc/images # too big
+	rm -rf $(TARNAME)/deps/uv/{docs,samples,test}
+	rm -rf $(TARNAME)/deps/openssl/{doc,demos,test}
 	rm -rf $(TARNAME)/deps/zlib/contrib # too big, unused
 	find $(TARNAME)/ -type l | xargs rm # annoying on windows
 	tar -cf $(TARNAME).tar $(TARNAME)
 	rm -rf $(TARNAME)
 	gzip -c -f -9 $(TARNAME).tar > $(TARNAME).tar.gz
 ifeq ($(XZ), 0)
-	xz -c -f -9 $(TARNAME).tar > $(TARNAME).tar.xz
+	xz -c -f -$(XZ_COMPRESSION) $(TARNAME).tar > $(TARNAME).tar.xz
 endif
 	rm $(TARNAME).tar
 
 tar: $(TARBALL)
+
+tar-upload: tar
+	ssh $(STAGINGSERVER) "mkdir -p staging/$(DISTTYPEDIR)/$(FULLVERSION)"
+	scp -p iojs-$(FULLVERSION).tar.gz $(STAGINGSERVER):staging/$(DISTTYPEDIR)/$(FULLVERSION)/iojs-$(FULLVERSION).tar.gz
+	ssh $(STAGINGSERVER) "touch staging/$(DISTTYPEDIR)/$(FULLVERSION)/iojs-$(FULLVERSION).tar.gz.done"
+ifeq ($(XZ), 0)
+	scp -p iojs-$(FULLVERSION).tar.xz $(STAGINGSERVER):staging/$(DISTTYPEDIR)/$(FULLVERSION)/iojs-$(FULLVERSION).tar.xz
+	ssh $(STAGINGSERVER) "touch staging/$(DISTTYPEDIR)/$(FULLVERSION)/iojs-$(FULLVERSION).tar.xz.done"
+endif
+
+doc-upload: tar
+	ssh $(STAGINGSERVER) "mkdir -p staging/$(DISTTYPEDIR)/$(FULLVERSION)"
+	scp -r out/doc/ $(STAGINGSERVER):staging/$(DISTTYPEDIR)/$(FULLVERSION)/
+	ssh $(STAGINGSERVER) "touch staging/$(DISTTYPEDIR)/$(FULLVERSION)/doc.done"
+
+$(TARBALL)-headers: config.gypi release-only
+	$(PYTHON) ./configure --prefix=/ --dest-cpu=$(DESTCPU) --tag=$(TAG) $(CONFIG_FLAGS)
+	HEADERS_ONLY=1 $(PYTHON) tools/install.py install '$(TARNAME)' '$(PREFIX)'
+	find $(TARNAME)/ -type l | xargs rm # annoying on windows
+	tar -cf $(TARNAME)-headers.tar $(TARNAME)
+	rm -rf $(TARNAME)
+	gzip -c -f -9 $(TARNAME)-headers.tar > $(TARNAME)-headers.tar.gz
+ifeq ($(XZ), 0)
+	xz -c -f -$(XZ_COMPRESSION) $(TARNAME)-headers.tar > $(TARNAME)-headers.tar.xz
+endif
+	rm $(TARNAME)-headers.tar
+
+tar-headers: $(TARBALL)-headers
+
+tar-headers-upload: tar-headers
+	ssh $(STAGINGSERVER) "mkdir -p staging/$(DISTTYPEDIR)/$(FULLVERSION)"
+	scp -p $(TARNAME)-headers.tar.gz $(STAGINGSERVER):staging/$(DISTTYPEDIR)/$(FULLVERSION)/$(TARNAME)-headers.tar.gz
+	ssh $(STAGINGSERVER) "touch staging/$(DISTTYPEDIR)/$(FULLVERSION)/$(TARNAME)-headers.tar.gz.done"
+ifeq ($(XZ), 0)
+	scp -p $(TARNAME)-headers.tar.xz $(STAGINGSERVER):staging/$(DISTTYPEDIR)/$(FULLVERSION)/$(TARNAME)-headers.tar.xz
+	ssh $(STAGINGSERVER) "touch staging/$(DISTTYPEDIR)/$(FULLVERSION)/$(TARNAME)-headers.tar.xz.done"
+endif
 
 $(BINARYTAR): release-only
 	rm -rf $(BINARYNAME)
@@ -307,32 +387,27 @@ $(BINARYTAR): release-only
 	rm -rf $(BINARYNAME)
 	gzip -c -f -9 $(BINARYNAME).tar > $(BINARYNAME).tar.gz
 ifeq ($(XZ), 0)
-	xz -c -f -9 $(BINARYNAME).tar > $(BINARYNAME).tar.xz
+	xz -c -f -$(XZ_COMPRESSION) $(BINARYNAME).tar > $(BINARYNAME).tar.xz
 endif
 	rm $(BINARYNAME).tar
 
 binary: $(BINARYTAR)
 
-$(PKGSRC): release-only
-	rm -rf dist out
-	$(PYTHON) configure --prefix=/ \
-		--dest-cpu=$(DESTCPU) --tag=$(TAG) $(CONFIG_FLAGS)
-	$(MAKE) install DESTDIR=dist
-	(cd dist; find * -type f | sort) > packlist
-	pkg_info -X pkg_install | \
-		egrep '^(MACHINE_ARCH|OPSYS|OS_VERSION|PKGTOOLS_VERSION)' > build-info
-	pkg_create -B build-info -c tools/pkgsrc/comment -d tools/pkgsrc/description \
-		-f packlist -I /opt/local -p dist -U $(PKGSRC)
+binary-upload: binary
+	ssh $(STAGINGSERVER) "mkdir -p staging/$(DISTTYPEDIR)/$(FULLVERSION)"
+	scp -p iojs-$(FULLVERSION)-$(OSTYPE)-$(ARCH).tar.gz $(STAGINGSERVER):staging/$(DISTTYPEDIR)/$(FULLVERSION)/iojs-$(FULLVERSION)-$(OSTYPE)-$(ARCH).tar.gz
+	ssh $(STAGINGSERVER) "touch staging/$(DISTTYPEDIR)/$(FULLVERSION)/iojs-$(FULLVERSION)-$(OSTYPE)-$(ARCH).tar.gz.done"
+ifeq ($(XZ), 0)
+	scp -p iojs-$(FULLVERSION)-$(OSTYPE)-$(ARCH).tar.xz $(STAGINGSERVER):staging/$(DISTTYPEDIR)/$(FULLVERSION)/iojs-$(FULLVERSION)-$(OSTYPE)-$(ARCH).tar.xz
+	ssh $(STAGINGSERVER) "touch staging/$(DISTTYPEDIR)/$(FULLVERSION)/iojs-$(FULLVERSION)-$(OSTYPE)-$(ARCH).tar.xz.done"
+endif
 
-pkgsrc: $(PKGSRC)
-
-wrkclean:
-	$(MAKE) -C tools/wrk/ clean
-	rm tools/wrk/wrk
-
-wrk: tools/wrk/wrk
-tools/wrk/wrk:
-	$(MAKE) -C tools/wrk/
+haswrk=$(shell which wrk > /dev/null 2>&1; echo $$?)
+wrk:
+ifneq ($(haswrk), 0)
+	@echo "please install wrk before proceeding. More information can be found in benchmark/README.md." >&2
+	@exit 1
+endif
 
 bench-net: all
 	@$(NODE) benchmark/common.js net
@@ -373,9 +448,9 @@ bench-http-simple:
 	 benchmark/http_simple_bench.sh
 
 bench-idle:
-	./$(NODE_EXE) benchmark/idle_server.js &
+	$(NODE) benchmark/idle_server.js &
 	sleep 1
-	./$(NODE_EXE) benchmark/idle_clients.js &
+	$(NODE) benchmark/idle_clients.js &
 
 jslintfix:
 	PYTHONPATH=tools/closure_linter/:tools/gflags/ $(PYTHON) tools/closure_linter/closure_linter/fixjsstyle.py --strict --nojsdoc -r lib/ -r src/ --exclude_files lib/punycode.js
@@ -384,7 +459,6 @@ jslint:
 	PYTHONPATH=tools/closure_linter/:tools/gflags/ $(PYTHON) tools/closure_linter/closure_linter/gjslint.py --unix_mode --strict --nojsdoc -r lib/ -r src/ --exclude_files lib/punycode.js
 
 CPPLINT_EXCLUDE ?=
-CPPLINT_EXCLUDE += src/node_dtrace.cc
 CPPLINT_EXCLUDE += src/node_lttng.cc
 CPPLINT_EXCLUDE += src/node_root_certs.h
 CPPLINT_EXCLUDE += src/node_lttng_tp.h
@@ -400,4 +474,9 @@ cpplint:
 
 lint: jslint cpplint
 
-.PHONY: lint cpplint jslint bench clean docopen docclean doc dist distclean check uninstall install install-includes install-bin all staticlib dynamiclib test test-all test-addons build-addons website-upload pkg blog blogclean tar binary release-only bench-http-simple bench-idle bench-all bench bench-misc bench-array bench-buffer bench-net bench-http bench-fs bench-tls
+.PHONY: lint cpplint jslint bench clean docopen docclean doc dist distclean \
+	check uninstall install install-includes install-bin all staticlib \
+	dynamiclib test test-all test-addons build-addons website-upload pkg \
+	blog blogclean tar binary release-only bench-http-simple bench-idle \
+	bench-all bench bench-misc bench-array bench-buffer bench-net \
+	bench-http bench-fs bench-tls cctest

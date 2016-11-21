@@ -9,8 +9,10 @@ import sys
 import shutil
 import string
 
-CC = os.environ.get('CC', 'cc')
-CXX = os.environ.get('CXX', 'c++')
+# gcc and g++ as defaults matches what GYP's Makefile generator does,
+# except on OS X.
+CC = os.environ.get('CC', 'cc' if sys.platform == 'darwin' else 'gcc')
+CXX = os.environ.get('CXX', 'c++' if sys.platform == 'darwin' else 'g++')
 
 root_dir = os.path.dirname(__file__)
 sys.path.insert(0, os.path.join(root_dir, 'tools', 'gyp', 'pylib'))
@@ -23,12 +25,20 @@ import nodedownload
 # parse our options
 parser = optparse.OptionParser()
 
+valid_os = ('win', 'mac', 'solaris', 'freebsd', 'openbsd', 'linux', 'android')
+valid_arch = ('arm', 'arm64', 'ia32', 'mips', 'mipsel', 'x32', 'x64', 'x86')
+valid_arm_float_abi = ('soft', 'softfp', 'hard')
+valid_mips_arch = ('loongson', 'r1', 'r2', 'r6', 'rx')
+valid_mips_fpu = ('fp32', 'fp64', 'fpxx')
+valid_mips_float_abi = ('soft', 'hard')
+
 # Options should be in alphabetical order but keep --prefix at the top,
 # that's arguably the one people will be looking for most.
 parser.add_option('--prefix',
     action='store',
     dest='prefix',
-    help='select the install prefix (defaults to /usr/local)')
+    default='/usr/local',
+    help='select the install prefix [default: %default]')
 
 parser.add_option('--debug',
     action='store_true',
@@ -38,13 +48,14 @@ parser.add_option('--debug',
 parser.add_option('--dest-cpu',
     action='store',
     dest='dest_cpu',
-    help='CPU architecture to build for. Valid values are: arm, ia32, x32, x64')
+    choices=valid_arch,
+    help='CPU architecture to build for ({0})'.format(', '.join(valid_arch)))
 
 parser.add_option('--dest-os',
     action='store',
     dest='dest_os',
-    help='operating system to build for. Valid values are: '
-         'win, mac, solaris, freebsd, openbsd, linux, android')
+    choices=valid_os,
+    help='operating system to build for ({0})'.format(', '.join(valid_os)))
 
 parser.add_option('--gdb',
     action='store_true',
@@ -67,24 +78,6 @@ parser.add_option("--openssl-no-asm",
     dest="openssl_no_asm",
     help="Do not build optimized assembly for OpenSSL")
 
-# deprecated
-parser.add_option('--openssl-includes',
-    action='store',
-    dest='shared_openssl_includes',
-    help=optparse.SUPPRESS_HELP)
-
-# deprecated
-parser.add_option('--openssl-libpath',
-    action='store',
-    dest='shared_openssl_libpath',
-    help=optparse.SUPPRESS_HELP)
-
-# deprecated
-parser.add_option('--openssl-use-sys',
-    action='store_true',
-    dest='shared_openssl',
-    help=optparse.SUPPRESS_HELP)
-
 parser.add_option('--shared-http-parser',
     action='store_true',
     dest='shared_http_parser',
@@ -98,7 +91,8 @@ parser.add_option('--shared-http-parser-includes',
 parser.add_option('--shared-http-parser-libname',
     action='store',
     dest='shared_http_parser_libname',
-    help='alternative lib name to link to (default: \'http_parser\')')
+    default='http_parser',
+    help='alternative lib name to link to [default: %default]')
 
 parser.add_option('--shared-http-parser-libpath',
     action='store',
@@ -118,7 +112,8 @@ parser.add_option('--shared-libuv-includes',
 parser.add_option('--shared-libuv-libname',
     action='store',
     dest='shared_libuv_libname',
-    help='alternative lib name to link to (default: \'uv\')')
+    default='uv',
+    help='alternative lib name to link to [default: %default]')
 
 parser.add_option('--shared-libuv-libpath',
     action='store',
@@ -138,32 +133,13 @@ parser.add_option('--shared-openssl-includes',
 parser.add_option('--shared-openssl-libname',
     action='store',
     dest='shared_openssl_libname',
-    help='alternative lib name to link to (default: \'crypto,ssl\')')
+    default='crypto,ssl',
+    help='alternative lib name to link to [default: %default]')
 
 parser.add_option('--shared-openssl-libpath',
     action='store',
     dest='shared_openssl_libpath',
     help='a directory to search for the shared OpenSSL DLLs')
-
-parser.add_option('--shared-v8',
-    action='store_true',
-    dest='shared_v8',
-    help='link to a shared V8 DLL instead of static linking')
-
-parser.add_option('--shared-v8-includes',
-    action='store',
-    dest='shared_v8_includes',
-    help='directory containing V8 header files')
-
-parser.add_option('--shared-v8-libname',
-    action='store',
-    dest='shared_v8_libname',
-    help='alternative lib name to link to (default: \'v8\')')
-
-parser.add_option('--shared-v8-libpath',
-    action='store',
-    dest='shared_v8_libpath',
-    help='a directory to search for the shared V8 DLL')
 
 parser.add_option('--shared-zlib',
     action='store_true',
@@ -178,7 +154,8 @@ parser.add_option('--shared-zlib-includes',
 parser.add_option('--shared-zlib-libname',
     action='store',
     dest='shared_zlib_libname',
-    help='alternative lib name to link to (default: \'z\')')
+    default='z',
+    help='alternative lib name to link to [default: %default]')
 
 parser.add_option('--shared-zlib-libpath',
     action='store',
@@ -205,8 +182,33 @@ parser.add_option('--v8-options',
 parser.add_option('--with-arm-float-abi',
     action='store',
     dest='arm_float_abi',
-    help='specifies which floating-point ABI to use. Valid values are: '
-         'soft, softfp, hard')
+    choices=valid_arm_float_abi,
+    help='specifies which floating-point ABI to use ({0}).'.format(
+        ', '.join(valid_arm_float_abi)))
+
+parser.add_option('--with-mips-arch-variant',
+    action='store',
+    dest='mips_arch_variant',
+    default='r2',
+    choices=valid_mips_arch,
+    help='MIPS arch variant ({0}) [default: %default]'.format(
+        ', '.join(valid_mips_arch)))
+
+parser.add_option('--with-mips-fpu-mode',
+    action='store',
+    dest='mips_fpu_mode',
+    default='fp32',
+    choices=valid_mips_fpu,
+    help='MIPS FPU mode ({0}) [default: %default]'.format(
+        ', '.join(valid_mips_fpu)))
+
+parser.add_option('--with-mips-float-abi',
+    action='store',
+    dest='mips_float_abi',
+    default='hard',
+    choices=valid_mips_float_abi,
+    help='MIPS floating-point ABI ({0}) [default: %default]'.format(
+        ', '.join(valid_mips_float_abi)))
 
 parser.add_option('--with-dtrace',
     action='store_true',
@@ -236,12 +238,14 @@ parser.add_option('--with-icu-path',
 parser.add_option('--with-icu-locales',
     action='store',
     dest='with_icu_locales',
-    help='Comma-separated list of locales for "small-icu". Default: "root,en". "root" is assumed.')
+    default='root,en',
+    help='Comma-separated list of locales for "small-icu". "root" is assumed. '
+        '[default: %default]')
 
 parser.add_option('--with-intl',
     action='store',
     dest='with_intl',
-    help='Intl mode: none, full-icu, small-icu (default is none)')
+    help='Intl mode: none, full-icu, small-icu [default: none]')
 
 parser.add_option('--with-icu-source',
     action='store',
@@ -293,6 +297,11 @@ parser.add_option('--xcode',
     action='store_true',
     dest='use_xcode',
     help='generate build files for use with xcode')
+
+parser.add_option('--enable-static',
+    action='store_true',
+    dest='enable_static',
+    help='build as static library')
 
 (options, args) = parser.parse_args()
 
@@ -348,11 +357,63 @@ def try_check_compiler(cc, lang):
   return (True, is_clang, clang_version, gcc_version)
 
 
+#
+# The version of asm compiler is needed for building openssl asm files.
+# See deps/openssl/openssl.gypi for detail.
+# Commands and reglar expressions to obtain its version number is taken from
+# https://github.com/openssl/openssl/blob/OpenSSL_1_0_2-stable/crypto/sha/asm/sha512-x86_64.pl#L112-L129
+#
+def get_llvm_version(cc):
+  try:
+    proc = subprocess.Popen(shlex.split(cc) + ['-v'], stdin=subprocess.PIPE,
+                            stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+  except OSError:
+    print '''io.js configure error: No acceptable C compiler found!
+
+        Please make sure you have a C compiler installed on your system and/or
+        consider adjusting the CC environment variable if you installed
+        it in a non-standard prefix.
+        '''
+    sys.exit()
+
+  match = re.search(r"(^clang version|based on LLVM) ([3-9]\.[0-9]+)",
+                    proc.communicate()[1])
+
+  if match:
+    return match.group(2)
+  else:
+    return 0
+
+
+def get_gas_version(cc):
+  try:
+    proc = subprocess.Popen(shlex.split(cc) + ['-Wa,-v', '-c', '-o',
+                                               '/dev/null', '-x',
+                                               'assembler',  '/dev/null'],
+                            stdin=subprocess.PIPE, stderr=subprocess.PIPE,
+                            stdout=subprocess.PIPE)
+  except OSError:
+    print '''io.js configure error: No acceptable C compiler found!
+
+        Please make sure you have a C compiler installed on your system and/or
+        consider adjusting the CC environment variable if you installed
+        it in a non-standard prefix.
+        '''
+    sys.exit()
+
+  match = re.match(r"GNU assembler version ([2-9]\.[0-9]+)",
+                   proc.communicate()[1])
+
+  if match:
+    return match.group(1)
+  else:
+    return 0
+
 # Note: Apple clang self-reports as clang 4.2.0 and gcc 4.2.1.  It passes
 # the version check more by accident than anything else but a more rigorous
 # check involves checking the build number against a whitelist.  I'm not
 # quite prepared to go that far yet.
-def check_compiler():
+def check_compiler(o):
   if sys.platform == 'win32':
     return
 
@@ -371,6 +432,15 @@ def check_compiler():
     # to a version that is not completely ancient.
     warn('C compiler too old, need gcc 4.2 or clang 3.2 (CC=%s)' % CC)
 
+    # Need llvm_version or gas_version when openssl asm files are compiled
+  if options.without_ssl or options.openssl_no_asm or options.shared_openssl:
+    return
+
+  if is_clang:
+    o['variables']['llvm_version'] = get_llvm_version(CC)
+  else:
+    o['variables']['gas_version'] = get_gas_version(CC)
+
 
 def cc_macros():
   """Checks predefined macros using the CC command."""
@@ -381,7 +451,7 @@ def cc_macros():
                          stdout=subprocess.PIPE,
                          stderr=subprocess.PIPE)
   except OSError:
-    print '''Node.js configure error: No acceptable C compiler found!
+    print '''io.js configure error: No acceptable C compiler found!
 
         Please make sure you have a C compiler installed on your system and/or
         consider adjusting the CC environment variable if you installed
@@ -410,7 +480,8 @@ def is_arch_armv7():
   return ('__ARM_ARCH_7__' in cc_macros_cache or
           '__ARM_ARCH_7A__' in cc_macros_cache or
           '__ARM_ARCH_7R__' in cc_macros_cache or
-          '__ARM_ARCH_7M__' in cc_macros_cache)
+          '__ARM_ARCH_7M__' in cc_macros_cache or
+          '__ARM_ARCH_7S__' in cc_macros_cache)
 
 
 def is_arch_armv6():
@@ -436,10 +507,11 @@ def host_arch_cc():
   k = cc_macros()
 
   matchup = {
-    '__x86_64__'  : 'x64',
-    '__i386__'    : 'ia32',
+    '__aarch64__' : 'arm64',
     '__arm__'     : 'arm',
+    '__i386__'    : 'ia32',
     '__mips__'    : 'mips',
+    '__x86_64__'  : 'x64',
   }
 
   rtn = 'ia32' # default
@@ -486,9 +558,21 @@ def configure_arm(o):
   o['variables']['arm_thumb'] = 0      # -marm
   o['variables']['arm_float_abi'] = arm_float_abi
 
+  if options.dest_os == 'android':
+    o['variables']['arm_fpu'] = 'vfpv3'
+    o['variables']['arm_version'] = '7'
+
   # Print warning when snapshot is enabled and building on armv6
   if is_arch_armv6() and options.with_snapshot:
     warn('when building on ARMv6, don\'t use --with-snapshot')
+
+
+def configure_mips(o):
+  can_use_fpu_instructions = (options.mips_float_abi != 'soft')
+  o['variables']['v8_can_use_fpu_instructions'] = b(can_use_fpu_instructions)
+  o['variables']['v8_use_mips_abi_hardfloat'] = b(can_use_fpu_instructions)
+  o['variables']['mips_arch_variant'] = options.mips_arch_variant
+  o['variables']['mips_fpu_mode'] = options.mips_fpu_mode
 
 
 def configure_node(o):
@@ -500,6 +584,10 @@ def configure_node(o):
 
   host_arch = host_arch_win() if os.name == 'nt' else host_arch_cc()
   target_arch = options.dest_cpu or host_arch
+  # ia32 is preferred by the build tools (GYP) over x86 even if we prefer the latter
+  # the Makefile resets this to x86 afterward
+  if target_arch == 'x86':
+    target_arch = 'ia32'
   o['variables']['host_arch'] = host_arch
   o['variables']['target_arch'] = target_arch
 
@@ -510,6 +598,8 @@ def configure_node(o):
 
   if target_arch == 'arm':
     configure_arm(o)
+  elif target_arch in ('mips', 'mipsel'):
+    configure_mips(o)
 
   if flavor in ('solaris', 'mac', 'linux', 'freebsd'):
     use_dtrace = not options.without_dtrace
@@ -538,13 +628,6 @@ def configure_node(o):
   else:
     o['variables']['node_use_lttng'] = 'false'
 
-  # if we're on illumos based systems wrap the helper library into the
-  # executable
-  if flavor == 'solaris':
-    o['variables']['node_use_mdb'] = 'true'
-  else:
-    o['variables']['node_use_mdb'] = 'false'
-
   if options.no_ifaddrs:
     o['defines'] += ['SUNOS_NO_IFADDRS']
 
@@ -572,17 +655,17 @@ def configure_node(o):
   if options.v8_options:
     o['variables']['node_v8_options'] = options.v8_options.replace('"', '\\"')
 
+  if options.enable_static:
+    o['variables']['node_target_type'] = 'static_library'
+
 
 def configure_libz(o):
   o['variables']['node_shared_zlib'] = b(options.shared_zlib)
 
-  # assume shared_zlib if one of these is set?
+  if options.shared_zlib:
+    o['libraries'] += ['-l%s' % options.shared_zlib_libname]
   if options.shared_zlib_libpath:
     o['libraries'] += ['-L%s' % options.shared_zlib_libpath]
-  if options.shared_zlib_libname:
-    o['libraries'] += ['-l%s' % options.shared_zlib_libname]
-  elif options.shared_zlib:
-    o['libraries'] += ['-lz']
   if options.shared_zlib_includes:
     o['include_dirs'] += [options.shared_zlib_includes]
 
@@ -590,13 +673,10 @@ def configure_libz(o):
 def configure_http_parser(o):
     o['variables']['node_shared_http_parser'] = b(options.shared_http_parser)
 
-    # assume shared http_parser if one of these is set?
+    if options.shared_http_parser:
+      o['libraries'] += ['-l%s' % options.shared_http_parser_libname]
     if options.shared_http_parser_libpath:
         o['libraries'] += ['-L%s' % options.shared_http_parser_libpath]
-    if options.shared_http_parser_libname:
-        o['libraries'] += ['-l%s' % options.shared_http_parser_libname]
-    elif options.shared_http_parser:
-        o['libraries'] += ['-lhttp_parser']
     if options.shared_http_parser_includes:
         o['include_dirs'] += [options.shared_http_parser_includes]
 
@@ -604,38 +684,23 @@ def configure_http_parser(o):
 def configure_libuv(o):
   o['variables']['node_shared_libuv'] = b(options.shared_libuv)
 
-  # assume shared libuv if one of these is set?
+  if options.shared_libuv:
+    o['libraries'] += ['-l%s' % options.shared_libuv_libname]
   if options.shared_libuv_libpath:
     o['libraries'] += ['-L%s' % options.shared_libuv_libpath]
   else:
     o['variables']['uv_library'] = 'static_library'
 
-  if options.shared_libuv_libname:
-    o['libraries'] += ['-l%s' % options.shared_libuv_libname]
-  elif options.shared_libuv:
-    o['libraries'] += ['-luv']
   if options.shared_libuv_includes:
     o['include_dirs'] += [options.shared_libuv_includes]
 
 
 def configure_v8(o):
-  o['variables']['node_shared_v8'] = b(options.shared_v8)
   o['variables']['v8_enable_gdbjit'] = 1 if options.gdb else 0
   o['variables']['v8_no_strict_aliasing'] = 1  # Work around compiler bugs.
   o['variables']['v8_optimized_debug'] = 0  # Compile with -O0 in debug builds.
   o['variables']['v8_random_seed'] = 0  # Use a random seed for hash tables.
   o['variables']['v8_use_snapshot'] = b(options.with_snapshot)
-
-  # assume shared_v8 if one of these is set?
-  if options.shared_v8_libpath:
-    o['libraries'] += ['-L%s' % options.shared_v8_libpath]
-  if options.shared_v8_libname:
-    o['libraries'] += ['-l%s' % options.shared_v8_libname]
-  elif options.shared_v8:
-    o['libraries'] += ['-lv8']
-  if options.shared_v8_includes:
-    o['include_dirs'] += [options.shared_v8_includes]
-
 
 def configure_openssl(o):
   o['variables']['node_use_openssl'] = b(not options.without_ssl)
@@ -649,14 +714,11 @@ def configure_openssl(o):
   if options.shared_openssl:
     (libs, cflags) = pkg_config('openssl') or ('-lssl -lcrypto', '')
 
+    libnames = options.shared_openssl_libname.split(',')
+    o['libraries'] += ['-l%s' % s for s in libnames]
+
     if options.shared_openssl_libpath:
       o['libraries'] += ['-L%s' % options.shared_openssl_libpath]
-
-    if options.shared_openssl_libname:
-      libnames = options.shared_openssl_libname.split(',')
-      o['libraries'] += ['-l%s' % s for s in libnames]
-    else:
-      o['libraries'] += libs.split()
 
     if options.shared_openssl_includes:
       o['include_dirs'] += [options.shared_openssl_includes]
@@ -765,23 +827,14 @@ def configure_intl(o):
     return
   # --with-intl=<with_intl>
   # set the default
-  if with_intl is None:
-    with_intl = 'none'  # The default mode of Intl
-  # sanity check localelist
-  if options.with_icu_locales and (with_intl != 'small-icu'):
-    print 'Error: --with-icu-locales only makes sense with --with-intl=small-icu'
-    sys.exit(1)
-  if with_intl == 'none' or with_intl is None:
+  if with_intl in (None, 'none'):
     o['variables']['v8_enable_i18n_support'] = 0
     return  # no Intl
   elif with_intl == 'small-icu':
     # small ICU (English only)
     o['variables']['v8_enable_i18n_support'] = 1
     o['variables']['icu_small'] = b(True)
-    with_icu_locales = options.with_icu_locales
-    if not with_icu_locales:
-      with_icu_locales = 'root,en'
-    locs = set(with_icu_locales.split(','))
+    locs = set(options.with_icu_locales.split(','))
     locs.add('root')  # must have root
     o['variables']['icu_locales'] = string.join(locs,',')
   elif with_intl == 'full-icu':
@@ -940,16 +993,6 @@ def configure_intl(o):
         pprint.pformat(icu_config, indent=2) + '\n')
   return  # end of configure_intl
 
-# Print a warning when the compiler is too old.
-check_compiler()
-
-# determine the "flavor" (operating system) we're building for,
-# leveraging gyp's GetFlavor function
-flavor_params = {}
-if (options.dest_os):
-  flavor_params['flavor'] = options.dest_os
-flavor = GetFlavor(flavor_params)
-
 output = {
   'variables': { 'python': sys.executable },
   'include_dirs': [],
@@ -957,6 +1000,16 @@ output = {
   'defines': [],
   'cflags': [],
 }
+
+# Print a warning when the compiler is too old.
+check_compiler(output)
+
+# determine the "flavor" (operating system) we're building for,
+# leveraging gyp's GetFlavor function
+flavor_params = {}
+if (options.dest_os):
+  flavor_params['flavor'] = options.dest_os
+flavor = GetFlavor(flavor_params)
 
 configure_node(output)
 configure_libz(output)

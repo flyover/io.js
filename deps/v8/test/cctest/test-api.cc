@@ -21895,6 +21895,38 @@ void CallCompletedCallbackException() {
 }
 
 
+TEST(SealHandleScope) {
+  v8::Isolate* isolate = CcTest::isolate();
+  v8::HandleScope handle_scope(isolate);
+  LocalContext env;
+
+  v8::SealHandleScope seal(isolate);
+
+  // Should fail
+  v8::Local<v8::Object> obj = v8::Object::New(isolate);
+
+  USE(obj);
+}
+
+
+TEST(SealHandleScopeNested) {
+  v8::Isolate* isolate = CcTest::isolate();
+  v8::HandleScope handle_scope(isolate);
+  LocalContext env;
+
+  v8::SealHandleScope seal(isolate);
+
+  {
+    v8::HandleScope handle_scope(isolate);
+
+    // Should work
+    v8::Local<v8::Object> obj = v8::Object::New(isolate);
+
+    USE(obj);
+  }
+}
+
+
 TEST(CallCompletedCallbackOneException) {
   LocalContext env;
   v8::HandleScope scope(env->GetIsolate());
@@ -24540,7 +24572,7 @@ TEST(StreamingUtf8ScriptWithMultipleMultibyteCharactersSomeSplit2) {
 
 
 void TestInvalidCacheData(v8::ScriptCompiler::CompileOptions option) {
-  const char* garbage = "garbage garbage garbage garbage.";
+  const char* garbage = "garbage garbage garbage garbage garbage garbage";
   const uint8_t* data = reinterpret_cast<const uint8_t*>(garbage);
   int length = 16;
   v8::ScriptCompiler::CachedData* cached_data =

@@ -1,14 +1,14 @@
-if (!process.versions.openssl) {
-  console.error('Skipping because node compiled without OpenSSL.');
-  process.exit(0);
-}
-
 var assert = require('assert');
-var fs = require('fs');
-var net = require('net');
+var common = require('../common');
+
+if (!common.hasCrypto) {
+  console.log('1..0 # Skipped: missing crypto');
+  process.exit();
+}
 var tls = require('tls');
 
-var common = require('../common');
+var fs = require('fs');
+var net = require('net');
 
 var ended = 0;
 
@@ -17,8 +17,8 @@ var server = tls.createServer({
   cert: fs.readFileSync(common.fixturesDir + '/keys/agent1-cert.pem')
 }, function(c) {
   // Send close-notify without shutting down TCP socket
-  if (c.ssl.shutdown() !== 1)
-    c.ssl.shutdown();
+  if (c._handle.shutdownSSL() !== 1)
+    c._handle.shutdownSSL();
 }).listen(common.PORT, function() {
   var c = tls.connect(common.PORT, {
     rejectUnauthorized: false

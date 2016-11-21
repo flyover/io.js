@@ -1,6 +1,6 @@
 # Events
 
-    Stability: 4 - API Frozen
+    Stability: 2 - Stable
 
 <!--type=module-->
 
@@ -20,7 +20,11 @@ attached to.
 
 ## Class: events.EventEmitter
 
-To access the EventEmitter class, `require('events').EventEmitter`.
+Use `require('events')` to access the EventEmitter class.
+
+```javascript
+var EventEmitter = require('events');
+```
 
 When an `EventEmitter` instance experiences an error, the typical action is
 to emit an `'error'` event.  Error events are treated as a special case in

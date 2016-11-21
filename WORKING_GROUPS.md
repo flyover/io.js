@@ -18,7 +18,18 @@ back in to the TC.
 
 ## Current Working Groups
 
-### Website
+* [Website](#website)
+* [Streams](#streams)
+* [Build](#build)
+* [Tracing](#tracing)
+* [i18n](#i18n)
+* [Evangelism](#evangelism)
+* [Roadmap](#roadmap)
+* [Docker](#docker)
+* [Starting a Working Group](#starting-a-wg)
+* [Bootstrap Governance](#bootstrap-governance)
+
+### [Website](https://github.com/iojs/website)
 
 The website working group's purpose is to build and maintain a public
 website for the `io.js` project.
@@ -29,10 +40,7 @@ Its responsibilities are:
 releases and features.
 * Foster and enable a community of translators.
 
-The current members can be found in their
-[README](https://github.com/iojs/website#current-project-team-members).
-
-### Streams
+### [Streams](https://github.com/iojs/readable-stream)
 
 The Streams WG is dedicated to the support and improvement of the Streams API
 as used in io.js and the npm ecosystem. We seek to create a composable API that
@@ -50,18 +58,8 @@ responsibilities include:
 * Recommending versions of readable-stream to be included in io.js.
 * Messaging about the future of streams to give the community advance notice of changes.
 
-Initial members are:
-* @chrisdickinson
-* @isaacs
-* @rvagg
-* @Raynos
-* @calvinmetcalf
-* @sonewman
-* @mafintosh
-* @timgestson
-* @domenic
 
-### Build
+### [Build](https://github.com/iojs/build)
 
 The build working group's purpose is to create and maintain a
 distributed automation infrastructure.
@@ -70,11 +68,141 @@ Its responsibilities are:
 * Produce Packages for all target platforms.
 * Run tests.
 * Run performance testing and comparisons.
-* Creates and manages official docker images.
 * Creates and manages build-containers.
 
+
+### [Tracing](https://github.com/iojs/tracing-wg)
+
+The tracing working group's purpose is to increase the
+transparency of software written in io.js.
+
+Its responsibilities are:
+* Collaboration with V8 to integrate with `trace_event`.
+* Maintenance and iteration on AsyncWrap.
+* Maintenance and improvements to system tracing support (DTrace, LTTng, etc.)
+* Documentation of tracing and debugging techniques.
+* Fostering a tracing and debugging ecosystem.
+
+### i18n
+
+The i18n working groups handle more than just translations. They
+are endpoints for community members to collaborate with each
+other in their language of choice.
+
+Each team is organized around a common spoken language. Each
+language community might then produce multiple localizations for
+various project resources.
+
+Their responsibilities are:
+* Translations of any io.js materials they believe are relevant to their
+community.
+* Review processes for keeping translations up
+to date and of high quality.
+* Social media channels in their language.
+* Promotion of io.js speakers for meetups and conferences in their
+language.
+
+Each language community maintains its own membership.
+
+* [iojs-ar - Arabic (اللغة العربية)](http://github.com/iojs/iojs-ar)
+* [iojs-bg - Bulgarian (български език)](http://github.com/iojs/iojs-bg)
+* [iojs-bn - Bengali (বাংলা)](http://github.com/iojs/iojs-bn)
+* [iojs-cn - Chinese (中文)](http://github.com/iojs/iojs-cn)
+* [iojs-cs - Czech (Český Jazyk)](http://github.com/iojs/iojs-cs)
+* [iojs-da - Danish (Dansk)](http://github.com/iojs/iojs-da)
+* [iojs-de - German (Deutsch)](http://github.com/iojs/iojs-de)
+* [iojs-el - Greek (Ελληνικά)](http://github.com/iojs/iojs-el)
+* [iojs-es - Spanish (Español)](http://github.com/iojs/iojs-es)
+* [iojs-fa - Persian (فارسی)](http://github.com/iojs/iojs-fa)
+* [iojs-fi - Finnish (Suomi)](http://github.com/iojs/iojs-fi)
+* [iojs-fr - French (Français)](http://github.com/iojs/iojs-fr)
+* [iojs-he - Hebrew (עברית)](http://github.com/iojs/iojs-he)
+* [iojs-hi - Hindi (फिजी बात)](http://github.com/iojs/iojs-hi)
+* [iojs-hu - Hungarian (Magyar)](http://github.com/iojs/iojs-hu)
+* [iojs-id - Indonesian (Bahasa Indonesia)](http://github.com/iojs/iojs-id)
+* [iojs-it - Italian (Italiano)](http://github.com/iojs/iojs-it)
+* [iojs-ja - Japanese (日本語)](http://github.com/iojs/iojs-ja)
+* [iojs-ka - Georgian (ქართული)](http://github.com/iojs/iojs-ka)
+* [iojs-ko - Korean (조선말)](http://github.com/iojs/iojs-ko)
+* [iojs-mk - Macedonian (Mакедонски)](http://github.com/iojs/iojs-mk)
+* [iojs-ms - Malay (بهاس ملايو)](http://github.com/iojs/iojs-ms)
+* [iojs-nl - Dutch (Nederlands)](http://github.com/iojs/iojs-nl)
+* [iojs-no - Norwegian (Norsk)](http://github.com/iojs/iojs-no)
+* [iojs-pl - Polish (Język Polski)](http://github.com/iojs/iojs-pl)
+* [iojs-pt - Portuguese (Português)](http://github.com/iojs/iojs-pt)
+* [iojs-ro - Romanian (Română)](http://github.com/iojs/iojs-ro)
+* [iojs-ru - Russian (Русский)](http://github.com/iojs/iojs-ru)
+* [iojs-sv - Swedish (Svenska)](http://github.com/iojs/iojs-sv)
+* [iojs-ta - Tamil (தமிழ்)](http://github.com/iojs/iojs-ta)
+* [iojs-tr - Turkish (Türkçe)](http://github.com/iojs/iojs-tr)
+* [iojs-tw - Taiwanese (Hō-ló)](http://github.com/iojs/iojs-tw)
+* [iojs-uk - Ukrainian (Українська)](http://github.com/iojs/iojs-uk)
+* [iojs-vi - Vietnamese (Tiếng Việtnam)](http://github.com/iojs/iojs-vi)
+
+
+### [Evangelism](https://github.com/iojs/evangelism)
+
+The evangelism working group promotes the accomplishments
+of io.js and lets the community know how they can get involved.
+
+Their responsibilities are:
+* Project messaging.
+* Official project social media.
+* Promotion of speakers for meetups and conferences.
+* Promotion of community events.
+* Publishing regular update summaries and other promotional
+content.
+
+
+### [Roadmap](https://github.com/iojs/roadmap)
+
+The roadmap working group is responsible for user community outreach
+and the translation of their concerns into a plan of action for io.js.
+
+The final [ROADMAP](./ROADMAP.md) document is still owned by the TC and requires
+the same approval for changes as any other project asset.
+
+Their responsibilities are:
+* Attract and summarize user community needs and feedback.
+* Find or potentially create tools that allow for broader participation.
+* Create Pull Requests for relevant changes to [Roadmap.md](./ROADMAP.md)
+
+
+### [Docker](https://github.com/iojs/docker-iojs)
+
+The Docker working group's purpose is to build, maintain, and improve official
+Docker images for the `io.js` project.
+
+Their responsibilities are:
+* Keep the official Docker images updated in line with new `io.js` releases.
+* Decide and implement image improvements and/or fixes.
+* Maintain and improve the images' documentation.
+
+
+### Addon API
+
+The Addon API Working Group is responsible for maintaining the NAN project and
+corresponding _nan_ package in npm. The NAN project makes available an
+abstraction layer for native add-on authors for both Node.js and io.js,
+assisting in the writing of code that is compatible with many actively used
+versions of Node.js, io.js, V8 and libuv.
+
+Their responsibilities are:
+
+* Maintaining the [NAN](https://github.com/rvagg/nan) GitHub repository,
+  including code, issues and documentation.
+* Maintaining the [addon-examples](https://github.com/rvagg/node-addon-examples)
+  GitHub repository, including code, issues and documentation.
+* Maintaining the C++ Addon API within the io.js project, in subordination to
+  the io.js TC.
+* Maintaining the Addon documentation within the io.js project, in
+  subordination to the io.js TC.
+* Maintaining the _nan_ package in npm, releasing new versions as appropriate.
+* Messaging about the future of the io.js and NAN interface to give the
+  community advance notice of changes.
+
 The current members can be found in their
-[README](https://github.com/iojs/build#people).
+[README](https://github.com/rvagg/nan#collaborators).
 
 ## Starting a WG
 
@@ -85,8 +213,8 @@ ratified by the TC. A charter is a *statement of purpose*, a
 A working group needs 3 initial members. These should be individuals
 already undertaking the work described in the charter.
 
-The list of responsibilities should be specific. Once established these
-responsibilities are no longer governed by the TC and therefor should
+The list of responsibilities should be specific. Once established, these
+responsibilities are no longer governed by the TC and therefore should
 not be broad or subjective. The only recourse the TC has over the working
 group is to revoke the entire charter and take on the work previously
 done by the working group themselves.
@@ -96,7 +224,7 @@ undertaken by another WG then the charter will additionally have to be
 ratified by that WG.
 
 You can submit the WG charter for ratification by sending
-a Pull Request to this document which adds it to the
+a Pull Request to this document, which adds it to the
 list of current Working Groups. Once ratified the list of
 members should be maintained in the Working Group's
 README.
@@ -111,7 +239,7 @@ governance process, hence the term "bootstrap."
 ### *[insert WG name]* Working Group
 
 The io.js *[insert WG name]* is jointly governed by a Working Group (WG)
-which is responsible for high-level guidance of the project.
+that is responsible for high-level guidance of the project.
 
 The WG has final authority over this project including:
 
@@ -127,7 +255,7 @@ For the current list of WG members, see the project
 
 ### Collaborators
 
-The [iojs/website](https://github.com/iojs/website) GitHub repository is
+The *[insert WG name]* GitHub repository is
 maintained by the WG and additional Collaborators who are added by the
 WG on an ongoing basis.
 
@@ -140,7 +268,7 @@ _Note:_ If you make a significant contribution and are not considered
 for commit-access log an issue or contact a WG member directly and it
 will be brought up in the next WG meeting.
 
-Modifications of the contents of the iojs/website repository are made on
+Modifications of the contents of the *[insert WG repo]* repository are made on
 a collaborative basis. Anybody with a GitHub account may propose a
 modification via pull request and it will be considered by the project
 Collaborators. All pull requests must be reviewed and accepted by a
@@ -196,15 +324,15 @@ members affiliated with the over-represented employer(s).
 
 ### WG Meetings
 
-The WG meets weekly on a Google Hangout On Air. The meeting is run by
-a designated moderator approved by the WG. Each meeting should be
+The WG meets weekly on a Google Hangout On Air. A designated moderator
+approved by the WG runs the meeting. Each meeting should be
 published to YouTube.
 
-Items are added to the WG agenda which are considered contentious or
+Items are added to the WG agenda that are considered contentious or
 are modifications of governance, contribution policy, WG membership,
 or release process.
 
-The intention of the agenda is not to approve or review all patches,
+The intention of the agenda is not to approve or review all patches;
 that should happen continuously on GitHub and be handled by the larger
 group of Collaborators.
 
@@ -222,13 +350,13 @@ The WG may invite persons or representatives from certain projects to
 participate in a non-voting capacity.
 
 The moderator is responsible for summarizing the discussion of each
-agenda item and send it as a pull request after the meeting.
+agenda item and sends it as a pull request after the meeting.
 
 ### Consensus Seeking Process
 
 The WG follows a
 [Consensus Seeking](http://en.wikipedia.org/wiki/Consensus-seeking_decision-making)
-decision making model.
+decision-making model.
 
 When an agenda item has appeared to reach a consensus the moderator
 will ask "Does anyone object?" as a final call for dissent from the

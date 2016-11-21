@@ -1,9 +1,16 @@
 var assert = require('assert');
 var fs = require('fs');
 var path = require('path');
-var spawn = require('child_process').spawn;
+var child_process = require('child_process');
 
-var silent = +process.env.NODE_BENCH_SILENT;
+var outputFormat = process.env.OUTPUT_FORMAT ||
+                   (+process.env.NODE_BENCH_SILENT ? 'silent' : false) ||
+                   'default';
+
+// verify outputFormat
+if (['default', 'csv', 'silent'].indexOf(outputFormat) == -1) {
+  throw new Error('OUTPUT_FORMAT set to invalid value');
+}
 
 exports.PORT = process.env.PORT || 12346;
 
@@ -36,6 +43,15 @@ if (module === require.main) {
   runBenchmarks();
 }
 
+function hasWrk() {
+  var result = child_process.spawnSync('wrk', ['-h']);
+  if (result.error && result.error.code === 'ENOENT') {
+    console.error('Couldn\'t locate `wrk` which is needed for running ' +
+      'benchmarks. Check benchmark/README.md for further instructions.');
+      process.exit(-1);
+  }
+}
+
 function runBenchmarks() {
   var test = tests.shift();
   if (!test)
@@ -44,11 +60,13 @@ function runBenchmarks() {
   if (test.match(/^[\._]/))
     return process.nextTick(runBenchmarks);
 
-  console.error(type + '/' + test);
+  if (outputFormat == 'default')
+    console.error(type + '/' + test);
+
   test = path.resolve(dir, test);
 
   var a = (process.execArgv || []).concat(test);
-  var child = spawn(process.execPath, a, { stdio: 'inherit' });
+  var child = child_process.spawn(process.execPath, a, { stdio: 'inherit' });
   child.on('close', function(code) {
     if (code) {
       process.exit(code);
@@ -70,7 +88,9 @@ function Benchmark(fn, options) {
   this._name = require.main.filename.split(/benchmark[\/\\]/).pop();
   this._start = [0,0];
   this._started = false;
+
   var self = this;
+
   process.nextTick(function() {
     self._run();
   });
@@ -78,15 +98,15 @@ function Benchmark(fn, options) {
 
 // benchmark an http server.
 Benchmark.prototype.http = function(p, args, cb) {
+  hasWrk();
   var self = this;
-  var wrk = path.resolve(__dirname, '..', 'tools', 'wrk', 'wrk');
   var regexp = /Requests\/sec:[ \t]+([0-9\.]+)/;
   var url = 'http://127.0.0.1:' + exports.PORT + p;
 
   args = args.concat(url);
 
   var out = '';
-  var child = spawn(wrk, args);
+  var child = child_process.spawn('wrk', args);
 
   child.stdout.setEncoding('utf8');
 
@@ -139,13 +159,18 @@ Benchmark.prototype._run = function() {
     return newSet;
   }, [[main]]);
 
+  // output csv heading
+  if (outputFormat == 'csv')
+    console.log('filename,' + Object.keys(options).join(',') + ',result');
+
   var node = process.execPath;
   var i = 0;
   function run() {
     var argv = queue[i++];
     if (!argv)
       return;
-    var child = spawn(node, argv, { stdio: 'inherit' });
+    argv = process.execArgv.concat(argv);
+    var child = child_process.spawn(node, argv, { stdio: 'inherit' });
     child.on('close', function(code, signal) {
       if (code)
         console.error('child process exited with code ' + code);
@@ -203,15 +228,25 @@ Benchmark.prototype.end = function(operations) {
 
 Benchmark.prototype.report = function(value) {
   var heading = this.getHeading();
-  if (!silent)
+
+  if (outputFormat == 'default')
     console.log('%s: %s', heading, value.toFixed(5));
+  else if (outputFormat == 'csv')
+    console.log('%s,%s', heading, value.toFixed(5));
 
   process.exit(0);
 };
 
 Benchmark.prototype.getHeading = function() {
   var conf = this.config;
-  return this._name + ' ' + Object.keys(conf).map(function(key) {
-    return key + '=' + conf[key];
-  }).join(' ');
+
+  if (outputFormat == 'default') {
+    return this._name + ' ' + Object.keys(conf).map(function(key) {
+      return key + '=' + conf[key];
+    }).join(' ');
+  } else if (outputFormat == 'csv') {
+    return this._name + ',' + Object.keys(conf).map(function(key) {
+      return conf[key];
+    }).join(',');
+  }
 };

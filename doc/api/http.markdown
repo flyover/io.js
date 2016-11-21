@@ -1,6 +1,6 @@
 # HTTP
 
-    Stability: 3 - Stable
+    Stability: 2 - Stable
 
 To use the HTTP server and client one must `require('http')`.
 
@@ -478,11 +478,6 @@ Options:
  - `Agent` object: explicitly use the passed in `Agent`.
  - `false`: opts out of connection pooling with an Agent, defaults request to
    `Connection: close`.
-- `keepAlive`: {Boolean} Keep sockets around in a pool to be used
-  by other requests in the future. Default = `false`
-- `keepAliveMsecs`: {Integer} When using HTTP KeepAlive, how often to
-  send TCP KeepAlive packets over sockets being kept alive.  Default =
-  `1000`.  Only relevant if `keepAlive` is set to `true`.
 
 The optional `callback` parameter will be added as a one time listener for
 the ['response'][] event.
@@ -859,7 +854,14 @@ Emitted when the server sends a '100 Continue' HTTP response, usually because
 the request contained 'Expect: 100-continue'. This is an instruction that
 the client should send the request body.
 
-### request.flush()
+### Event: 'abort'
+
+`function () { }`
+
+Emitted when the request has been aborted by the client. This event is only
+emitted on the first call to `abort()`.
+
+### request.flushHeaders()
 
 Flush the request headers.
 
@@ -868,7 +870,7 @@ call `request.end()` or write the first chunk of request data.  It then tries
 hard to pack the request headers and data into a single TCP packet.
 
 That's usually what you want (it saves a TCP round-trip) but not when the first
-data isn't sent until possibly much later.  `request.flush()` lets you bypass
+data isn't sent until possibly much later.  `request.flushHeaders()` lets you bypass
 the optimization and kickstart the request.
 
 ### request.write(chunk[, encoding][, callback])

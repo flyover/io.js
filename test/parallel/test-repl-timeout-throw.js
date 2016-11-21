@@ -1,5 +1,5 @@
 var assert = require('assert');
-var common = require('../common.js');
+var common = require('../common');
 
 var spawn = require('child_process').spawn;
 
@@ -44,7 +44,7 @@ child.stdout.once('data', function() {
                       '  });\n' +
                       '});"";\n');
 
-    setTimeout(child.stdin.end.bind(child.stdin), 200);
+    setTimeout(child.stdin.end.bind(child.stdin), common.platformTimeout(200));
   }
 });
 

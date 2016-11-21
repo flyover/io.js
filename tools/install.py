@@ -156,6 +156,9 @@ def files(action):
 
   if 'true' == variables.get('node_install_npm'): npm_files(action)
 
+  headers(action)
+
+def headers(action):
   action([
     'common.gypi',
     'config.gypi',
@@ -168,16 +171,15 @@ def files(action):
   ], 'include/node/')
 
   subdir_files('deps/cares/include', 'include/node/', action)
+  subdir_files('deps/v8/include', 'include/node/', action)
 
   if 'false' == variables.get('node_shared_libuv'):
     subdir_files('deps/uv/include', 'include/node/', action)
 
   if 'false' == variables.get('node_shared_openssl'):
+    subdir_files('deps/openssl/openssl/include/openssl', 'include/node/openssl/', action)
+    subdir_files('deps/openssl/config/archs', 'include/node/openssl/archs', action)
     action(['deps/openssl/config/opensslconf.h'], 'include/node/openssl/')
-    subdir_files('deps/openssl/include/openssl', 'include/node/openssl/', action)
-
-  if 'false' == variables.get('node_shared_v8'):
-    subdir_files('deps/v8/include', 'include/node/', action)
 
   if 'false' == variables.get('node_shared_zlib'):
     action([
@@ -207,8 +209,14 @@ def run(args):
   install_path = dst_dir + node_prefix + '/'
 
   cmd = args[1] if len(args) > 1 else 'install'
-  if cmd == 'install': return files(install)
-  if cmd == 'uninstall': return files(uninstall)
+
+  if os.environ.get('HEADERS_ONLY'):
+    if cmd == 'install': return headers(install)
+    if cmd == 'uninstall': return headers(uninstall)
+  else:
+    if cmd == 'install': return files(install)
+    if cmd == 'uninstall': return files(uninstall)
+
   raise RuntimeError('Bad command: %s\n' % cmd)
 
 if __name__ == '__main__':
